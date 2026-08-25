@@ -8,10 +8,12 @@
 
 * {
   box-sizing: border-box;
+  letter-spacing: 0;
 }
 
 html {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -24,6 +26,8 @@ body {
     sans-serif;
   background: #f7f7f5;
   color: #111111;
+  overflow-x: hidden;
+  text-rendering: geometricPrecision;
 }
 
 button {

@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Fameko",
-  description: "Hushållsekonomi på ett enklare sätt.",
+  description: "Beräknat saldo för kommande 12 månader.",
 };
 
 export default function RootLayout({
