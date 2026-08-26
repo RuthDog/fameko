@@ -1126,7 +1126,7 @@ function YearOverview({
       aria-label="Beräknat saldo för kommande 12 månader"
       className="border-y border-stone-200 bg-white/82 px-3 py-5 shadow-[0_18px_64px_rgba(28,25,23,0.045)] backdrop-blur sm:px-5 lg:px-7"
     >
-      <div className="mx-auto grid max-w-[1560px] grid-cols-[56px_repeat(4,minmax(0,1fr))] lg:hidden">
+      <div className="mx-auto grid max-w-[1560px] grid-cols-[56px_repeat(4,minmax(0,1fr))] sm:hidden">
         <div className="border-b border-stone-200 pb-3" />
         {yearRows.map((row) => (
           <div
@@ -1225,7 +1225,7 @@ function YearOverview({
         })}
       </div>
 
-      <div className="mx-auto hidden max-w-[1560px] lg:grid lg:grid-cols-[172px_96px_repeat(12,minmax(0,1fr))]">
+      <div className="mx-auto hidden max-w-[1560px] sm:grid sm:grid-cols-[168px_96px_repeat(12,minmax(0,1fr))]">
         <div className="border-b border-stone-200 pb-3" />
         <div className="border-b border-stone-200 pb-3 text-center text-[11px] font-semibold text-stone-500">
           ÅRET
@@ -2426,7 +2426,7 @@ export default function Home() {
         selectedMonthId={selectedMonth.id}
       />
 
-      <div className="lg:hidden">
+      <div className="sm:hidden">
         <MonthDetail
           editingKey={editingTarget ? amountKey(editingTarget) : null}
           editingValue={editingValue}
