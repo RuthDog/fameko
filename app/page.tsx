@@ -13,6 +13,7 @@ type ExpenseFrequency =
   | "yearly";
 type MonthValue = Record<string, number>;
 type AmountTarget =
+  | { type: "openingBalance"; monthId: string }
   | { type: "category"; monthId: string; categoryName: string }
   | { type: "item"; monthId: string; categoryName: string; itemName: string };
 type DeleteTarget = Extract<AmountTarget, { type: "item" }>;
@@ -107,11 +108,14 @@ const statusDot: Record<Status, string> = {
 };
 
 const yearRows: YearRow[] = [
-  { label: "Startsaldo", shortLabel: "Start", key: "startBalance" },
+  { label: "Saldo", shortLabel: "Saldo", key: "startBalance" },
   { label: "Inkomster", shortLabel: "In", key: "income" },
   { label: "Utgifter", shortLabel: "Ut", key: "expenses" },
-  { label: "Beräknat saldo", shortLabel: "Saldo", key: "calculatedBalance" },
+  { label: "Beräknat saldo", shortLabel: "Ber.", key: "calculatedBalance" },
 ];
+
+const planningYear = 2026;
+const planningYears = [2023, 2024, 2025, planningYear];
 
 const expenseFrequencyOptions: { value: ExpenseFrequency; label: string; interval: number | null }[] = [
   { value: "once", label: "Engångskostnad", interval: null },
@@ -586,8 +590,14 @@ const monthMetadata = seedSourceMonths.map(({ id, label, name, status }) => ({
   status,
 }));
 const monthIds = monthMetadata.map((month) => month.id);
+const defaultMonthId = monthIds[0];
 const storageKey = "fameko.planning-data.v3";
 const showDevelopmentReset = process.env.NODE_ENV === "development";
+
+function getCurrentMonthId() {
+  const today = new Date();
+  return today.getFullYear() === planningYear ? monthIds[today.getMonth()] : null;
+}
 
 function createSeedPlanningData(months: ForecastMonth[]): PlanningData {
   const expenseCategories = months[0].categories.map((category, order) => ({
@@ -749,6 +759,13 @@ function getFrequencyMonthIds(targetMonthId: string, frequency: ExpenseFrequency
 }
 
 function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmount: string, scope: ChangeScope) {
+  if (target.type === "openingBalance") {
+    return {
+      ...data,
+      openingBalance: parseAmount(nextAmount),
+    };
+  }
+
   const category = data.expenseCategories.find((currentCategory) => currentCategory.name === target.categoryName);
 
   if (!category) {
@@ -984,9 +1001,60 @@ function savePlanningData(data: PlanningData) {
 const seedPlanningData = createSeedPlanningData(seedSourceMonths);
 
 function amountKey(target: AmountTarget) {
+  if (target.type === "openingBalance") {
+    return `${target.monthId}:opening-balance`;
+  }
+
   return target.type === "category"
     ? `${target.monthId}:${target.categoryName}`
     : `${target.monthId}:${target.categoryName}:${target.itemName}`;
+}
+
+function focusAmountCell(key: string) {
+  window.requestAnimationFrame(() => {
+    const target = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-edit-key]")).find(
+      (element) => element.dataset.editKey === key && element.getClientRects().length > 0,
+    );
+
+    target?.focus();
+  });
+}
+
+function getYearSummary(row: YearRow, months: ForecastMonth[]) {
+  if (!months.length) {
+    return "0 kr";
+  }
+
+  if (row.key === "startBalance") {
+    return months[0].startBalance;
+  }
+
+  if (row.key === "calculatedBalance") {
+    return months[months.length - 1].calculatedBalance;
+  }
+
+  return formatAmount(months.reduce((total, month) => total + parseAmount(month[row.key]), 0));
+}
+
+function getCategoryYearTotal(months: ForecastMonth[], categoryName: string) {
+  return formatAmount(
+    months.reduce((total, month) => {
+      const category = month.categories.find((currentCategory) => currentCategory.name === categoryName);
+      return total + parseAmount(category?.amount ?? "0 kr");
+    }, 0),
+  );
+}
+
+function getItemYearTotal(months: ForecastMonth[], categoryName: string, itemName: string) {
+  return formatAmount(
+    months.reduce((total, month) => {
+      const item = month.categories
+        .find((category) => category.name === categoryName)
+        ?.items?.find((currentItem) => currentItem.name === itemName);
+
+      return total + parseAmount(item?.amount ?? "0 kr");
+    }, 0),
+  );
 }
 
 function displayCategoryName(name: string) {
@@ -1003,6 +1071,8 @@ function YearOverview({
   expandedExpenses,
   expandedGridCategories,
   months,
+  currentMonthId,
+  onAddExpense,
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
@@ -1018,6 +1088,8 @@ function YearOverview({
   expandedExpenses: boolean;
   expandedGridCategories: Record<string, boolean>;
   months: ForecastMonth[];
+  currentMonthId: string | null;
+  onAddExpense: (categoryName: string) => void;
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
@@ -1029,13 +1101,32 @@ function YearOverview({
   selectedMonthId: string;
 }) {
   const expenseCategories = months[0]?.categories ?? [];
+  const currentMonthIndex = currentMonthId
+    ? months.findIndex((month) => month.id === currentMonthId)
+    : -1;
+
+  function monthCellTone(monthId: string, monthIndex: number) {
+    if (monthId === currentMonthId) {
+      return "bg-[#edf2ec] text-stone-950";
+    }
+
+    if (monthId === selectedMonthId) {
+      return "bg-stone-950/[0.045] text-stone-950";
+    }
+
+    if (currentMonthIndex >= 0 && monthIndex < currentMonthIndex) {
+      return "bg-stone-50/70 text-stone-400 hover:bg-stone-100/70 hover:text-stone-600";
+    }
+
+    return "text-stone-700 hover:bg-stone-50";
+  }
 
   return (
     <section
       aria-label="Beräknat saldo för kommande 12 månader"
-      className="border-y border-stone-200 bg-white/78 px-3 py-5 shadow-[0_22px_80px_rgba(28,25,23,0.05)] backdrop-blur sm:px-5 lg:px-7"
+      className="border-y border-stone-200 bg-white/82 px-3 py-5 shadow-[0_18px_64px_rgba(28,25,23,0.045)] backdrop-blur sm:px-5 lg:px-7"
     >
-      <div className="grid grid-cols-[52px_repeat(4,minmax(0,1fr))] sm:hidden">
+      <div className="mx-auto grid max-w-[1560px] grid-cols-[56px_repeat(4,minmax(0,1fr))] lg:hidden">
         <div className="border-b border-stone-200 pb-3" />
         {yearRows.map((row) => (
           <div
@@ -1046,63 +1137,131 @@ function YearOverview({
           </div>
         ))}
 
-        {months.map((month) => {
+        <div className="flex items-center border-b border-stone-200 py-3 text-[11px] font-semibold text-stone-950">
+          ÅRET
+        </div>
+        {yearRows.map((row) => {
+          const summary = getYearSummary(row, months);
+
+          return (
+            <div
+              className={`border-b border-stone-200 bg-stone-50/80 px-1 py-3 text-center text-[11px] text-stone-800 ${
+                row.key === "calculatedBalance" ? "font-semibold" : "font-medium"
+              }`}
+              key={`year-${row.key}`}
+              title={summary}
+            >
+              {shortAmount(summary)}
+            </div>
+          );
+        })}
+
+        {months.map((month, monthIndex) => {
           const selected = month.id === selectedMonthId;
+          const current = month.id === currentMonthId;
+          const past = currentMonthIndex >= 0 && monthIndex < currentMonthIndex;
 
           return (
             <div className="contents" key={month.id}>
               <button
                 aria-pressed={selected}
                 className={`flex items-center gap-1.5 border-b border-stone-100 py-3 text-left text-[11px] font-semibold transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
-                  selected ? "text-stone-950" : "text-stone-500"
+                  current
+                    ? "border-l-2 border-l-emerald-700 pl-1 text-stone-950"
+                    : selected
+                      ? "text-stone-950"
+                      : past
+                        ? "text-stone-400"
+                        : "text-stone-500"
                 }`}
                 onClick={() => onSelectMonth(month.id)}
                 type="button"
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${statusDot[month.status]}`} />
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${statusDot[month.status]} ${past ? "opacity-45" : ""}`}
+                />
                 <span>{month.label}</span>
               </button>
-              {yearRows.map((row) => (
-                <button
-                  aria-label={`${month.name}, ${row.label}: ${month[row.key]}`}
-                  className={`border-b border-stone-100 px-1 py-3 text-center text-[11px] font-medium transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
-                    selected
-                      ? "bg-stone-950/[0.04] text-stone-950"
-                      : "text-stone-700 hover:bg-stone-50"
-                  } ${row.key === "calculatedBalance" ? "font-semibold" : ""}`}
-                  key={`${month.id}-${row.key}`}
-                  onClick={() => onSelectMonth(month.id)}
-                  type="button"
-                >
-                  {month.short[row.key]}
-                </button>
-              ))}
+              {yearRows.map((row) => {
+                const isOpeningBalance = row.key === "startBalance" && monthIndex === 0;
+                const target: AmountTarget = { type: "openingBalance", monthId: month.id };
+                const cellClass = `${monthCellTone(month.id, monthIndex)} ${
+                  row.key === "calculatedBalance" ? "font-semibold" : "font-medium"
+                }`;
+
+                return isOpeningBalance ? (
+                  <div
+                    className={`grid min-w-0 place-items-center border-b border-stone-100 px-0.5 py-2 text-[11px] ${cellClass}`}
+                    key={`${month.id}-${row.key}`}
+                  >
+                    <EditableAmount
+                      amount={month.short[row.key]}
+                      ariaLabel={`Redigera årets första saldo, nu ${month[row.key]}`}
+                      cell
+                      editing={editingKey === amountKey(target)}
+                      editKey={amountKey(target)}
+                      onBeginEdit={() => onBeginEdit(target, month[row.key])}
+                      onCancel={onCancelEdit}
+                      onChange={onChangeEdit}
+                      onSave={onSaveEdit}
+                      value={editingValue}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    aria-label={`${month.name}, ${row.label}: ${month[row.key]}`}
+                    className={`border-b border-stone-100 px-1 py-3 text-center text-[11px] transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${cellClass}`}
+                    key={`${month.id}-${row.key}`}
+                    onClick={() => onSelectMonth(month.id)}
+                    tabIndex={-1}
+                    type="button"
+                  >
+                    {month.short[row.key]}
+                  </button>
+                );
+              })}
             </div>
           );
         })}
       </div>
 
-      <div className="hidden sm:grid sm:grid-cols-[168px_repeat(12,minmax(0,1fr))]">
+      <div className="mx-auto hidden max-w-[1560px] lg:grid lg:grid-cols-[172px_96px_repeat(12,minmax(0,1fr))]">
         <div className="border-b border-stone-200 pb-3" />
-        {months.map((month) => {
+        <div className="border-b border-stone-200 pb-3 text-center text-[11px] font-semibold text-stone-500">
+          ÅRET
+        </div>
+        {months.map((month, monthIndex) => {
           const selected = month.id === selectedMonthId;
+          const current = month.id === currentMonthId;
+          const past = currentMonthIndex >= 0 && monthIndex < currentMonthIndex;
 
           return (
             <button
               aria-pressed={selected}
-              className={`group relative min-h-10 border-b border-stone-200 pb-3 text-center text-xs font-semibold text-stone-500 transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
-                selected ? "text-stone-950" : "hover:text-stone-950"
+              className={`group relative min-h-12 border-b border-stone-200 pb-3 text-center text-xs font-semibold transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
+                current
+                  ? "bg-[#edf2ec] text-stone-950"
+                  : selected
+                    ? "bg-stone-950/[0.045] text-stone-950"
+                    : past
+                      ? "text-stone-400 hover:text-stone-600"
+                      : "text-stone-500 hover:text-stone-950"
               }`}
               key={month.id}
               onClick={() => onSelectMonth(month.id)}
               type="button"
             >
-              <span className="flex items-center justify-center gap-1.5">
+              <span className="flex items-center justify-center gap-1.5 pt-1">
                 <span>{month.label}</span>
-                <span className={`h-1.5 w-1.5 rounded-full ${statusDot[month.status]}`} />
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${statusDot[month.status]} ${past ? "opacity-45" : ""}`}
+                />
               </span>
-              {selected ? (
-                <span className="absolute inset-x-1 bottom-0 h-px bg-stone-950" />
+              {current ? <span className="mt-1 block text-[9px] font-medium text-emerald-800">NU</span> : null}
+              {current || selected ? (
+                <span
+                  className={`absolute inset-x-1 bottom-0 ${current ? "h-0.5 bg-emerald-800" : "h-px bg-stone-950"}`}
+                />
               ) : null}
             </button>
           );
@@ -1127,20 +1286,50 @@ function YearOverview({
                 ) : null}
                 <span>{row.label}</span>
               </button>
-              {months.map((month) => {
-                const selected = month.id === selectedMonthId;
+              <div
+                className={`border-b border-stone-100 bg-stone-50/80 px-1 py-4 text-center text-xs text-stone-800 lg:text-sm ${
+                  row.key === "calculatedBalance" ? "font-semibold" : "font-medium"
+                }`}
+                title={getYearSummary(row, months)}
+              >
+                {getYearSummary(row, months).replace(" kr", "")}
+              </div>
+              {months.map((month, monthIndex) => {
                 const value = month[row.key];
+                const isOpeningBalance = row.key === "startBalance" && monthIndex === 0;
+                const target: AmountTarget = { type: "openingBalance", monthId: month.id };
+                const cellClass = `${monthCellTone(month.id, monthIndex)} ${
+                  row.key === "calculatedBalance" ? "font-semibold" : "font-medium"
+                }`;
 
-                return (
+                return isOpeningBalance ? (
+                  <div
+                    className={`grid min-w-0 place-items-center border-b border-stone-100 px-1 py-2 text-xs lg:text-sm ${cellClass}`}
+                    key={`${row.key}-${month.id}`}
+                  >
+                    <EditableAmount
+                      amount={value.replace(" kr", "")}
+                      ariaLabel={`Redigera årets första saldo, nu ${value}`}
+                      cell
+                      editing={editingKey === amountKey(target)}
+                      editKey={amountKey(target)}
+                      onBeginEdit={() => {
+                        onSelectMonth(month.id);
+                        onBeginEdit(target, value);
+                      }}
+                      onCancel={onCancelEdit}
+                      onChange={onChangeEdit}
+                      onSave={onSaveEdit}
+                      value={editingValue}
+                    />
+                  </div>
+                ) : (
                   <button
                     aria-label={`${month.name}, ${row.label}: ${value}`}
-                    className={`min-w-0 border-b border-stone-100 px-1 py-4 text-center text-xs font-medium transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 lg:text-sm ${
-                      selected
-                        ? "bg-stone-950/[0.035] text-stone-950"
-                        : "text-stone-700 hover:bg-stone-50"
-                    } ${row.key === "calculatedBalance" ? "font-semibold" : ""}`}
+                    className={`min-w-0 border-b border-stone-100 px-1 py-4 text-center text-xs transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 lg:text-sm ${cellClass}`}
                     key={`${row.key}-${month.id}`}
                     onClick={() => onSelectMonth(month.id)}
+                    tabIndex={-1}
                     type="button"
                   >
                     {value.replace(" kr", "")}
@@ -1154,24 +1343,32 @@ function YearOverview({
         {expandedExpenses
           ? expenseCategories.map((category) => {
               const categoryExpanded = Boolean(expandedGridCategories[category.name]);
-              const canExpand = Boolean(category.items?.length);
+              const saving = category.name === "Sparande";
 
               return (
                 <div className="contents" key={`category-${category.name}`}>
                   <button
-                    aria-expanded={canExpand ? categoryExpanded : undefined}
-                    className="flex items-center gap-2 border-b border-stone-100 py-3 pr-2 text-left text-sm text-stone-700 transition hover:text-stone-950 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
-                    disabled={!canExpand}
+                    aria-expanded={categoryExpanded}
+                    className={`flex items-center gap-2 border-b border-stone-100 py-3 pr-2 text-left text-sm font-semibold transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
+                      saving ? "text-emerald-900 hover:text-emerald-950" : "text-stone-800 hover:text-stone-950"
+                    }`}
                     onClick={() => onToggleGridCategory(category.name)}
                     type="button"
                   >
                     <span className="ml-4 w-4 text-xs text-stone-400">
-                      {canExpand ? (categoryExpanded ? "-" : "+") : ""}
+                      {categoryExpanded ? "-" : "+"}
                     </span>
                     <span className="truncate">{displayCategoryName(category.name)}</span>
                   </button>
-                  {months.map((month) => {
-                    const selected = month.id === selectedMonthId;
+                  <div
+                    className={`border-b border-stone-100 bg-stone-50/80 px-1 py-3 text-center text-xs font-semibold lg:text-sm ${
+                      saving ? "text-emerald-900" : "text-stone-800"
+                    }`}
+                    title={getCategoryYearTotal(months, category.name)}
+                  >
+                    {getCategoryYearTotal(months, category.name).replace(" kr", "")}
+                  </div>
+                  {months.map((month, monthIndex) => {
                     const monthCategory = month.categories.find(
                       (currentCategory) => currentCategory.name === category.name,
                     );
@@ -1179,13 +1376,13 @@ function YearOverview({
                     return (
                       <button
                         aria-label={`${month.name}, ${displayCategoryName(category.name)}: ${monthCategory?.amount ?? "0 kr"}`}
-                        className={`min-w-0 border-b border-stone-100 px-1 py-3 text-center text-xs font-medium transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 lg:text-sm ${
-                          selected
-                            ? "bg-stone-950/[0.03] text-stone-950"
-                            : "text-stone-600 hover:bg-stone-50"
-                        }`}
+                        className={`min-w-0 border-b border-stone-100 px-1 py-3 text-center text-xs font-semibold transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 lg:text-sm ${monthCellTone(
+                          month.id,
+                          monthIndex,
+                        )}`}
                         key={`${category.name}-${month.id}`}
                         onClick={() => onSelectMonth(month.id)}
+                        tabIndex={-1}
                         type="button"
                       >
                         {(monthCategory?.amount ?? "0 kr").replace(" kr", "")}
@@ -1193,8 +1390,9 @@ function YearOverview({
                     );
                   })}
 
-                  {canExpand && categoryExpanded
-                    ? category.items?.map((item) => (
+                  {categoryExpanded ? (
+                    <>
+                      {category.items?.map((item) => (
                         <div className="contents" key={`${category.name}-${item.name}`}>
                           <div className="border-b border-stone-100 py-2.5 pr-2 text-sm text-stone-500">
                             <div className="ml-12 flex min-w-0 items-center justify-between gap-2">
@@ -1217,14 +1415,19 @@ function YearOverview({
                               </button>
                             </div>
                           </div>
-                          {months.map((month) => {
+                          <div
+                            className="border-b border-stone-100 bg-stone-50/80 px-1 py-2.5 text-center text-xs font-medium text-stone-600 lg:text-sm"
+                            title={getItemYearTotal(months, category.name, item.name)}
+                          >
+                            {getItemYearTotal(months, category.name, item.name).replace(" kr", "")}
+                          </div>
+                          {months.map((month, monthIndex) => {
                             const target: AmountTarget = {
                               type: "item",
                               monthId: month.id,
                               categoryName: category.name,
                               itemName: item.name,
                             };
-                            const selected = month.id === selectedMonthId;
                             const amount =
                               month.categories
                                 .find((currentCategory) => currentCategory.name === category.name)
@@ -1233,14 +1436,18 @@ function YearOverview({
 
                             return (
                               <div
-                                className={`grid min-w-0 place-items-center border-b border-stone-100 px-1 py-2.5 text-xs lg:text-sm ${
-                                  selected ? "bg-stone-950/[0.025]" : ""
-                                }`}
+                                className={`grid min-w-0 place-items-center border-b border-stone-100 px-1 py-2.5 text-xs lg:text-sm ${monthCellTone(
+                                  month.id,
+                                  monthIndex,
+                                )}`}
                                 key={`${category.name}-${item.name}-${month.id}`}
                               >
                                 <EditableAmount
                                   amount={amount.replace(" kr", "")}
+                                  ariaLabel={`Redigera ${item.name} i ${month.name}, nu ${amount}`}
+                                  cell
                                   editing={editingKey === amountKey(target)}
+                                  editKey={amountKey(target)}
                                   onBeginEdit={() => {
                                     onSelectMonth(month.id);
                                     onBeginEdit(target, amount);
@@ -1254,8 +1461,27 @@ function YearOverview({
                             );
                           })}
                         </div>
-                      ))
-                    : null}
+                      ))}
+                      <div className="contents">
+                        <div className="border-b border-stone-100 py-2.5 pr-2">
+                          <button
+                            className="ml-12 text-left text-sm font-medium text-stone-500 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-stone-900"
+                            onClick={() => onAddExpense(category.name)}
+                            type="button"
+                          >
+                            + Lägg till post
+                          </button>
+                        </div>
+                        <div className="border-b border-stone-100 bg-stone-50/80" />
+                        {months.map((month, monthIndex) => (
+                          <div
+                            className={`border-b border-stone-100 ${monthCellTone(month.id, monthIndex)}`}
+                            key={`add-${category.name}-${month.id}`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               );
             })
@@ -1276,7 +1502,10 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
 
 function EditableAmount({
   amount,
+  ariaLabel,
+  cell = false,
   editing,
+  editKey,
   onBeginEdit,
   onCancel,
   onChange,
@@ -1284,7 +1513,10 @@ function EditableAmount({
   value,
 }: {
   amount: string;
+  ariaLabel: string;
+  cell?: boolean;
   editing: boolean;
+  editKey: string;
   onBeginEdit: () => void;
   onCancel: () => void;
   onChange: (value: string) => void;
@@ -1295,8 +1527,11 @@ function EditableAmount({
     return (
       <input
         autoFocus
-        aria-label="Redigera belopp"
-        className="w-28 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm text-stone-950 shadow-sm outline-none focus:border-stone-900"
+        aria-label={ariaLabel}
+        className={`${
+          cell ? "h-8 w-full min-w-0 px-1" : "h-9 w-28 px-2"
+        } rounded-[4px] border border-stone-400 bg-white text-right text-sm text-stone-950 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.8)] outline-none focus:border-stone-950 focus:ring-2 focus:ring-stone-950/10`}
+        data-edit-key={editKey}
         inputMode="numeric"
         onBlur={onSave}
         onChange={(event) => onChange(event.target.value)}
@@ -1319,7 +1554,11 @@ function EditableAmount({
 
   return (
     <button
-      className="rounded-md px-2 py-1 text-right text-sm text-stone-600 transition hover:bg-stone-100 hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
+      aria-label={ariaLabel}
+      className={`${
+        cell ? "min-h-8 w-full min-w-0 px-1" : "min-h-9 px-2"
+      } rounded-[4px] text-right text-sm text-stone-600 transition hover:bg-white hover:text-stone-950 hover:shadow-[inset_0_0_0_1px_rgba(168,162,158,0.55)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-stone-900`}
+      data-edit-key={editKey}
       onClick={onBeginEdit}
       type="button"
     >
@@ -1333,6 +1572,7 @@ function ExpenseList({
   editingValue,
   expandedCategories,
   month,
+  onAddExpense,
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
@@ -1344,6 +1584,7 @@ function ExpenseList({
   editingValue: string;
   expandedCategories: Record<string, boolean>;
   month: ForecastMonth;
+  onAddExpense: (categoryName: string) => void;
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
@@ -1355,8 +1596,9 @@ function ExpenseList({
     <div className="mt-3 border-t border-stone-100">
       {month.categories.map((category) => {
         const key = `${month.id}:${category.name}`;
-        const canExpand = Boolean(category.items?.length);
+        const canExpand = true;
         const expanded = Boolean(expandedCategories[key]);
+        const saving = category.name === "Sparande";
         const target: AmountTarget = {
           type: "category",
           monthId: month.id,
@@ -1368,7 +1610,9 @@ function ExpenseList({
             <div className="flex min-h-10 items-center justify-between gap-4">
               <button
                 aria-expanded={canExpand ? expanded : undefined}
-                className="group flex min-w-0 flex-1 items-center gap-3 text-left text-sm text-stone-800"
+                className={`group flex min-w-0 flex-1 items-center gap-3 text-left text-sm font-semibold ${
+                  saving ? "text-emerald-900" : "text-stone-800"
+                }`}
                 disabled={!canExpand}
                 onClick={() => onToggleCategory(month.id, category.name)}
                 type="button"
@@ -1376,11 +1620,13 @@ function ExpenseList({
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-stone-200 text-xs text-stone-400 transition group-enabled:group-hover:border-stone-300 group-enabled:group-hover:text-stone-700">
                   {canExpand ? (expanded ? "-" : "+") : ""}
                 </span>
-                <span className="truncate">{category.name}</span>
+                <span className="truncate">{displayCategoryName(category.name)}</span>
               </button>
               <EditableAmount
                 amount={category.amount}
+                ariaLabel={`Redigera ${category.name} i ${month.name}, nu ${category.amount}`}
                 editing={editingKey === amountKey(target)}
+                editKey={amountKey(target)}
                 onBeginEdit={() => onBeginEdit(target, category.amount)}
                 onCancel={onCancelEdit}
                 onChange={onChangeEdit}
@@ -1417,7 +1663,9 @@ function ExpenseList({
                         </button>
                         <EditableAmount
                           amount={item.amount}
+                          ariaLabel={`Redigera ${item.name} i ${month.name}, nu ${item.amount}`}
                           editing={editingKey === amountKey(itemTarget)}
+                          editKey={amountKey(itemTarget)}
                           onBeginEdit={() => onBeginEdit(itemTarget, item.amount)}
                           onCancel={onCancelEdit}
                           onChange={onChangeEdit}
@@ -1428,6 +1676,13 @@ function ExpenseList({
                     </div>
                   );
                 })}
+                <button
+                  className="mt-2 min-h-9 text-left text-sm font-medium text-stone-500 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-stone-900"
+                  onClick={() => onAddExpense(category.name)}
+                  type="button"
+                >
+                  + Lägg till post
+                </button>
               </div>
             ) : null}
           </div>
@@ -1438,17 +1693,31 @@ function ExpenseList({
 }
 
 function ScopeDialog({
+  onCancel,
   onConfirm,
 }: {
+  onCancel: () => void;
   onConfirm: (scope: ChangeScope) => void;
 }) {
   const [scope, setScope] = useState<ChangeScope>("single");
 
   return (
-    <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
-      <div
+    <div
+      className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+    >
+      <form
         aria-modal="true"
         className="w-full max-w-sm rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfirm(scope);
+        }}
         role="dialog"
       >
         <p className="text-sm text-stone-500">Du ändrade denna kostnad.</p>
@@ -1461,23 +1730,34 @@ function ScopeDialog({
           ] as const).map(([value, label]) => (
             <label className="flex items-center gap-3 text-sm text-stone-700" key={value}>
               <input
+                autoFocus={value === "single"}
                 checked={scope === value}
                 className="h-4 w-4 accent-stone-950"
+                name="change-scope"
                 onChange={() => setScope(value)}
                 type="radio"
+                value={value}
               />
               {label}
             </label>
           ))}
         </div>
-        <button
-          className="mt-6 min-h-11 w-full rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
-          onClick={() => onConfirm(scope)}
-          type="button"
-        >
-          Klar
-        </button>
-      </div>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            className="min-h-11 rounded-lg border border-stone-200 bg-white px-4 text-sm font-medium text-stone-600 transition hover:border-stone-300 hover:text-stone-950"
+            onClick={onCancel}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
+            type="submit"
+          >
+            Klar
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -1492,16 +1772,29 @@ function DeleteConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
-      <div
+    <div
+      className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+    >
+      <form
         aria-modal="true"
         className="w-full max-w-sm rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfirm();
+        }}
         role="dialog"
       >
         <p className="text-sm text-stone-500">Planerad kostnad</p>
         <h3 className="mt-1 text-xl font-semibold text-stone-950">Ta bort {itemName}?</h3>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <button
+            autoFocus
             className="min-h-11 rounded-lg border border-stone-200 px-4 text-sm font-medium text-stone-600 transition hover:bg-white hover:text-stone-950"
             onClick={onCancel}
             type="button"
@@ -1510,13 +1803,12 @@ function DeleteConfirmDialog({
           </button>
           <button
             className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
-            onClick={onConfirm}
-            type="button"
+            type="submit"
           >
             Ta bort
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
@@ -1534,10 +1826,22 @@ function DeleteScopeDialog({
   const monthName = getMonthName(target.monthId).toLowerCase();
 
   return (
-    <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
-      <div
+    <div
+      className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+    >
+      <form
         aria-modal="true"
         className="w-full max-w-sm rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfirm(scope);
+        }}
         role="dialog"
       >
         <p className="text-sm text-stone-500">Du tar bort {target.itemName} från {monthName}.</p>
@@ -1550,10 +1854,13 @@ function DeleteScopeDialog({
           ] as const).map(([value, label]) => (
             <label className="flex items-center gap-3 text-sm text-stone-700" key={value}>
               <input
+                autoFocus={value === "single"}
                 checked={scope === value}
                 className="h-4 w-4 accent-stone-950"
+                name="delete-scope"
                 onChange={() => setScope(value)}
                 type="radio"
+                value={value}
               />
               {label}
             </label>
@@ -1569,13 +1876,12 @@ function DeleteScopeDialog({
           </button>
           <button
             className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
-            onClick={() => onConfirm(scope)}
-            type="button"
+            type="submit"
           >
             Ta bort
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
@@ -1598,16 +1904,31 @@ function AddExpenseDialog({
   const canSave = isValidAddExpenseDraft(draft, categories);
 
   return (
-    <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
-      <div
+    <div
+      className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <form
         aria-modal="true"
         className="w-full max-w-md rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+
+          if (canSave) {
+            onSave();
+          }
+        }}
         role="dialog"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-stone-500">Snabb planering</p>
-            <h3 className="mt-1 text-2xl font-semibold text-stone-950">Lägg till kostnad</h3>
+            <p className="text-sm text-stone-500">Planerad utgift</p>
+            <h3 className="mt-1 text-2xl font-semibold text-stone-950">Lägg till post</h3>
           </div>
           <button className="text-sm text-stone-400 hover:text-stone-950" onClick={onClose} type="button">
             Stäng
@@ -1618,7 +1939,8 @@ function AddExpenseDialog({
           <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
             Kategori
             <select
-              className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none"
+              autoFocus
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none"
               onChange={(event) => onChangeDraft({ ...draft, category: event.target.value })}
               required
               value={draft.category}
@@ -1632,7 +1954,7 @@ function AddExpenseDialog({
           <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
             Beskrivning
             <input
-              className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none placeholder:text-stone-300"
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none placeholder:text-stone-300"
               onChange={(event) => onChangeDraft({ ...draft, description: event.target.value })}
               placeholder="Valfri"
               value={draft.description}
@@ -1642,7 +1964,7 @@ function AddExpenseDialog({
           <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
             Belopp
             <input
-              className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none placeholder:text-stone-300"
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none placeholder:text-stone-300"
               inputMode="numeric"
               onChange={(event) => onChangeDraft({ ...draft, amount: event.target.value })}
               placeholder="2500"
@@ -1654,7 +1976,7 @@ function AddExpenseDialog({
           <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
             Månad
             <select
-              className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none"
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none"
               onChange={(event) => onChangeDraft({ ...draft, monthId: event.target.value })}
               required
               value={draft.monthId}
@@ -1690,13 +2012,63 @@ function AddExpenseDialog({
         <button
           className="mt-6 min-h-11 w-full rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           disabled={!canSave}
-          onClick={onSave}
-          type="button"
+          type="submit"
         >
           Spara
         </button>
-      </div>
+      </form>
     </div>
+  );
+}
+
+function YearNavigation() {
+  return (
+    <nav
+      aria-label="Välj planeringsår"
+      className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center justify-between gap-3 px-4 pb-4 sm:px-6 lg:px-8"
+    >
+      <div className="flex items-center gap-1">
+        {planningYears.map((year) => {
+          const selected = year === planningYear;
+
+          return (
+            <button
+              aria-current={selected ? "page" : undefined}
+              aria-disabled="true"
+              className={`min-h-9 min-w-12 cursor-default rounded-md px-2 text-sm font-medium ${
+                selected
+                  ? "border border-stone-200 bg-white text-stone-950 shadow-sm"
+                  : "text-stone-400"
+              }`}
+              disabled
+              key={year}
+              type="button"
+            >
+              {year}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          aria-disabled="true"
+          className="min-h-9 cursor-default px-2 text-sm text-stone-400"
+          disabled
+          type="button"
+        >
+          Uppdatera från föregående år
+        </button>
+        <button
+          aria-disabled="true"
+          className="min-h-9 cursor-default rounded-md border border-stone-200 bg-white px-3 text-sm font-medium text-stone-500 shadow-sm"
+          disabled
+          type="button"
+        >
+          + Nytt år
+        </button>
+      </div>
+    </nav>
   );
 }
 
@@ -1717,7 +2089,7 @@ function MonthDetail({
   editingValue: string;
   expandedCategories: Record<string, boolean>;
   month: ForecastMonth;
-  onAddExpense: () => void;
+  onAddExpense: (categoryName: string) => void;
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
@@ -1738,21 +2110,14 @@ function MonthDetail({
 
         <div className="min-w-0">
           <div className="grid border-y border-stone-200 sm:grid-cols-4 sm:gap-8 sm:py-5">
-            <DetailMetric label="Startsaldo" value={month.startBalance} />
+            <DetailMetric label="Saldo" value={month.startBalance} />
             <DetailMetric label="Inkomster" value={month.income} />
             <DetailMetric label="Utgifter" value={month.expenses} />
             <DetailMetric label="Beräknat saldo" value={month.calculatedBalance} />
           </div>
 
-          <div className="mt-8 flex min-h-12 items-center justify-between border-b border-stone-200">
+          <div className="mt-8 flex min-h-12 items-center border-b border-stone-200">
             <p className="text-base font-medium text-stone-950">Planerade utgifter</p>
-            <button
-              className="rounded-lg px-3 py-2 text-sm text-stone-500 transition hover:bg-stone-100 hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
-              onClick={onAddExpense}
-              type="button"
-            >
-              Lägg till kostnad
-            </button>
           </div>
 
           <ExpenseList
@@ -1760,6 +2125,7 @@ function MonthDetail({
             editingValue={editingValue}
             expandedCategories={expandedCategories}
             month={month}
+            onAddExpense={onAddExpense}
             onBeginEdit={onBeginEdit}
             onCancelEdit={onCancelEdit}
             onChangeEdit={onChangeEdit}
@@ -1776,15 +2142,17 @@ function MonthDetail({
 export default function Home() {
   const [planningData, setPlanningData] = useState(seedPlanningData);
   const [storageReady, setStorageReady] = useState(false);
-  const [selectedMonthId, setSelectedMonthId] = useState("apr");
+  const [currentMonthId, setCurrentMonthId] = useState<string | null>(null);
+  const [selectedMonthId, setSelectedMonthId] = useState(defaultMonthId);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    "apr:Boende": true,
-    "apr:Bil": true,
-    "apr:Streaming": true,
+    [`${defaultMonthId}:Boende`]: true,
+    [`${defaultMonthId}:Bil`]: true,
+    [`${defaultMonthId}:Streaming`]: true,
   });
   const [expandedExpenses, setExpandedExpenses] = useState(false);
   const [expandedGridCategories, setExpandedGridCategories] = useState<Record<string, boolean>>({});
   const [editingTarget, setEditingTarget] = useState<AmountTarget | null>(null);
+  const [editingInitialAmount, setEditingInitialAmount] = useState(0);
   const [editingValue, setEditingValue] = useState("");
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
@@ -1794,17 +2162,29 @@ export default function Home() {
     category: "Bil",
     description: "",
     amount: "",
-    monthId: "apr",
+    monthId: defaultMonthId,
     frequency: "once",
   });
 
   useEffect(() => {
     const storedData = readStoredPlanningData();
+    const activeMonthId = getCurrentMonthId();
 
     if (storedData) {
       setPlanningData(storedData);
     } else {
       savePlanningData(seedPlanningData);
+    }
+
+    if (activeMonthId) {
+      setCurrentMonthId(activeMonthId);
+      setSelectedMonthId(activeMonthId);
+      setExpandedCategories({
+        [`${activeMonthId}:Boende`]: true,
+        [`${activeMonthId}:Bil`]: true,
+        [`${activeMonthId}:Streaming`]: true,
+      });
+      setAddDraft((current) => ({ ...current, monthId: activeMonthId }));
     }
 
     setStorageReady(true);
@@ -1849,12 +2229,23 @@ export default function Home() {
 
   function beginEdit(target: AmountTarget, amount: string) {
     setEditingTarget(target);
+    setEditingInitialAmount(parseAmount(amount));
     setEditingValue(amount.replace(/\D/g, ""));
   }
 
-  function cancelEdit() {
+  function clearEdit() {
     setEditingTarget(null);
+    setEditingInitialAmount(0);
     setEditingValue("");
+  }
+
+  function cancelEdit() {
+    const key = editingTarget ? amountKey(editingTarget) : null;
+    clearEdit();
+
+    if (key) {
+      focusAmountCell(key);
+    }
   }
 
   function saveEdit() {
@@ -1863,10 +2254,25 @@ export default function Home() {
     }
 
     const nextAmount = formatAmountInput(editingValue);
+    const target = editingTarget;
+    const key = amountKey(target);
 
-    setPendingEdit({ target: editingTarget, amount: nextAmount });
+    if (parseAmount(nextAmount) === editingInitialAmount) {
+      clearEdit();
+      focusAmountCell(key);
+      return;
+    }
+
+    if (target.type === "openingBalance") {
+      setPlanningData((currentData) => updatePlanningAmount(currentData, target, nextAmount, "single"));
+      clearEdit();
+      focusAmountCell(key);
+      return;
+    }
+
+    setPendingEdit({ target, amount: nextAmount });
     setScopeDialogOpen(true);
-    cancelEdit();
+    clearEdit();
   }
 
   function applyPendingEdit(scope: ChangeScope) {
@@ -1875,12 +2281,25 @@ export default function Home() {
       return;
     }
 
+    const key = amountKey(pendingEdit.target);
+
     setPlanningData((currentData) =>
       updatePlanningAmount(currentData, pendingEdit.target, pendingEdit.amount, scope),
     );
 
     setPendingEdit(null);
     setScopeDialogOpen(false);
+    focusAmountCell(key);
+  }
+
+  function cancelPendingEdit() {
+    const key = pendingEdit ? amountKey(pendingEdit.target) : null;
+    setPendingEdit(null);
+    setScopeDialogOpen(false);
+
+    if (key) {
+      focusAmountCell(key);
+    }
   }
 
   function requestDelete(target: DeleteTarget) {
@@ -1909,9 +2328,12 @@ export default function Home() {
     setPendingDelete(null);
   }
 
-  function openAddDialog() {
+  function openAddDialog(categoryName?: string) {
     setAddDraft({
-      category: selectedMonth.categories[0]?.name ?? "Övrigt",
+      category:
+        categoryName && categoryNames.includes(categoryName)
+          ? categoryName
+          : selectedMonth.categories[0]?.name ?? "Övrigt",
       description: "",
       amount: "",
       monthId: selectedMonth.id,
@@ -1943,7 +2365,7 @@ export default function Home() {
   function resetSeedData() {
     setPlanningData(seedPlanningData);
     savePlanningData(seedPlanningData);
-    setSelectedMonthId("apr");
+    setSelectedMonthId(currentMonthId ?? defaultMonthId);
     setExpandedExpenses(false);
     setExpandedGridCategories({});
     setPendingEdit(null);
@@ -1973,29 +2395,26 @@ export default function Home() {
       </header>
 
       <div className="mx-auto w-full max-w-[1560px] px-4 pb-5 pt-2 sm:px-6 lg:px-8">
-        <section className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <section className="mb-5">
           <div>
             <p className="text-sm font-medium text-stone-500">Kommande 12 månader</p>
-            <h1 className="mt-3 max-w-5xl text-4xl font-semibold text-stone-950 sm:text-5xl lg:text-6xl">
-              Jag ser hela mitt ekonomiska år.
+            <h1 className="mt-2 max-w-5xl text-3xl font-semibold text-stone-950 sm:text-4xl">
+              Ditt ekonomiska år
             </h1>
           </div>
-          <button
-            className="hidden rounded-lg px-3 py-2 text-sm text-stone-500 transition hover:bg-stone-100 hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 sm:inline-flex"
-            onClick={openAddDialog}
-            type="button"
-          >
-            Lägg till kostnad
-          </button>
         </section>
       </div>
 
+      <YearNavigation />
+
       <YearOverview
+        currentMonthId={currentMonthId}
         editingKey={editingTarget ? amountKey(editingTarget) : null}
         editingValue={editingValue}
         expandedExpenses={expandedExpenses}
         expandedGridCategories={expandedGridCategories}
         months={months}
+        onAddExpense={openAddDialog}
         onBeginEdit={beginEdit}
         onCancelEdit={cancelEdit}
         onChangeEdit={setEditingValue}
@@ -2007,7 +2426,7 @@ export default function Home() {
         selectedMonthId={selectedMonth.id}
       />
 
-      <div className="sm:hidden">
+      <div className="lg:hidden">
         <MonthDetail
           editingKey={editingTarget ? amountKey(editingTarget) : null}
           editingValue={editingValue}
@@ -2025,6 +2444,7 @@ export default function Home() {
 
       {scopeDialogOpen ? (
         <ScopeDialog
+          onCancel={cancelPendingEdit}
           onConfirm={applyPendingEdit}
         />
       ) : null}
