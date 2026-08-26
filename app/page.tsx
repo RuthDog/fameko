@@ -4,10 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = "single" | "future" | "all";
+type ExpenseFrequency =
+  | "once"
+  | "monthly"
+  | "everyTwoMonths"
+  | "quarterly"
+  | "twiceYearly"
+  | "yearly";
 type MonthValue = Record<string, number>;
 type AmountTarget =
   | { type: "category"; monthId: string; categoryName: string }
   | { type: "item"; monthId: string; categoryName: string; itemName: string };
+type DeleteTarget = Extract<AmountTarget, { type: "item" }>;
 
 type Income = {
   id: string;
@@ -28,6 +36,7 @@ type ExpenseItem = {
   name: string;
   monthlyValues: MonthValue;
   recurring: boolean;
+  frequency?: ExpenseFrequency;
 };
 
 type PlanningData = {
@@ -78,12 +87,17 @@ type AddExpenseDraft = {
   description: string;
   amount: string;
   monthId: string;
-  recurring: boolean;
+  frequency: ExpenseFrequency;
 };
 
 type PendingEdit = {
   target: AmountTarget;
   amount: string;
+};
+
+type PendingDelete = {
+  target: DeleteTarget;
+  recurring: boolean;
 };
 
 const statusDot: Record<Status, string> = {
@@ -97,6 +111,15 @@ const yearRows: YearRow[] = [
   { label: "Inkomster", shortLabel: "In", key: "income" },
   { label: "Utgifter", shortLabel: "Ut", key: "expenses" },
   { label: "Beräknat saldo", shortLabel: "Saldo", key: "calculatedBalance" },
+];
+
+const expenseFrequencyOptions: { value: ExpenseFrequency; label: string; interval: number | null }[] = [
+  { value: "once", label: "Engångskostnad", interval: null },
+  { value: "monthly", label: "Varje månad", interval: 1 },
+  { value: "everyTwoMonths", label: "Varannan månad", interval: 2 },
+  { value: "quarterly", label: "Var tredje månad", interval: 3 },
+  { value: "twiceYearly", label: "Var sjätte månad", interval: 6 },
+  { value: "yearly", label: "Varje år", interval: 12 },
 ];
 
 const initialMonths: ForecastMonth[] = [
@@ -708,6 +731,23 @@ function getAffectedMonthIds(targetMonthId: string, scope: ChangeScope) {
   return targetIndex >= 0 ? monthIds.slice(targetIndex) : [];
 }
 
+function getFrequencyMonthIds(targetMonthId: string, frequency: ExpenseFrequency) {
+  const targetIndex = monthIds.indexOf(targetMonthId);
+
+  if (targetIndex < 0) {
+    return [];
+  }
+
+  const option = expenseFrequencyOptions.find((currentOption) => currentOption.value === frequency);
+  const interval = option?.interval;
+
+  if (!interval) {
+    return [targetMonthId];
+  }
+
+  return monthIds.filter((_, index) => index >= targetIndex && (index - targetIndex) % interval === 0);
+}
+
 function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmount: string, scope: ChangeScope) {
   const category = data.expenseCategories.find((currentCategory) => currentCategory.name === target.categoryName);
 
@@ -763,6 +803,44 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
   };
 }
 
+function findExpenseItem(data: PlanningData, target: DeleteTarget) {
+  const category = data.expenseCategories.find((currentCategory) => currentCategory.name === target.categoryName);
+
+  if (!category) {
+    return null;
+  }
+
+  return (
+    data.expenseItems.find((item) => item.category === category.id && item.name === target.itemName) ?? null
+  );
+}
+
+function hasMultipleOccurrences(item: ExpenseItem) {
+  return Object.values(item.monthlyValues).filter((amount) => amount > 0).length > 1;
+}
+
+function removePlanningExpenseItem(data: PlanningData, target: DeleteTarget, scope: ChangeScope) {
+  const category = data.expenseCategories.find((currentCategory) => currentCategory.name === target.categoryName);
+
+  if (!category) {
+    return data;
+  }
+
+  const updatedData = scope === "all" ? data : updatePlanningAmount(data, target, "0 kr", scope);
+  const expenseItems = updatedData.expenseItems.filter((item) => {
+    if (item.category !== category.id || item.name !== target.itemName) {
+      return true;
+    }
+
+    return scope !== "all" && Object.values(item.monthlyValues).some((amount) => amount > 0);
+  });
+
+  return {
+    ...updatedData,
+    expenseItems,
+  };
+}
+
 function createUniqueExpenseId(items: ExpenseItem[], baseId: string) {
   if (!items.some((item) => item.id === baseId)) {
     return baseId;
@@ -779,18 +857,44 @@ function createUniqueExpenseId(items: ExpenseItem[], baseId: string) {
   return nextId;
 }
 
-function addExpenseToPlanningData(data: PlanningData, draft: AddExpenseDraft) {
-  const category =
-    data.expenseCategories.find((currentCategory) => currentCategory.name === draft.category) ??
-    data.expenseCategories[0];
+function createUniqueExpenseName(items: ExpenseItem[], categoryId: string, baseName: string) {
+  const name = baseName.trim() || "Ny kostnad";
+  const existingNames = new Set(items.filter((item) => item.category === categoryId).map((item) => item.name));
 
-  if (!category) {
+  if (!existingNames.has(name)) {
+    return name;
+  }
+
+  let index = 2;
+  let nextName = `${name} ${index}`;
+
+  while (existingNames.has(nextName)) {
+    index += 1;
+    nextName = `${name} ${index}`;
+  }
+
+  return nextName;
+}
+
+function isValidAddExpenseDraft(draft: AddExpenseDraft, categories: string[]) {
+  return (
+    categories.includes(draft.category) &&
+    monthIds.includes(draft.monthId) &&
+    expenseFrequencyOptions.some((option) => option.value === draft.frequency) &&
+    parseAmount(draft.amount) > 0
+  );
+}
+
+function addExpenseToPlanningData(data: PlanningData, draft: AddExpenseDraft) {
+  const category = data.expenseCategories.find((currentCategory) => currentCategory.name === draft.category);
+  const amount = parseAmount(draft.amount);
+
+  if (!category || !monthIds.includes(draft.monthId) || amount <= 0) {
     return data;
   }
 
-  const description = draft.description.trim() || "Ny kostnad";
-  const amount = parseAmount(draft.amount);
-  const affectedMonthIds = draft.recurring ? getAffectedMonthIds(draft.monthId, "future") : [draft.monthId];
+  const description = createUniqueExpenseName(data.expenseItems, category.id, draft.description);
+  const affectedMonthIds = getFrequencyMonthIds(draft.monthId, draft.frequency);
   const monthlyValues = monthIds.reduce<MonthValue>((values, monthId) => {
     values[monthId] = affectedMonthIds.includes(monthId) ? amount : 0;
     return values;
@@ -806,7 +910,8 @@ function addExpenseToPlanningData(data: PlanningData, draft: AddExpenseDraft) {
         category: category.id,
         name: description,
         monthlyValues,
-        recurring: draft.recurring,
+        recurring: draft.frequency !== "once",
+        frequency: draft.frequency,
       },
     ],
   };
@@ -888,6 +993,10 @@ function displayCategoryName(name: string) {
   return name === "Streaming" ? "Streaming & abonnemang" : name;
 }
 
+function getMonthName(monthId: string) {
+  return monthMetadata.find((month) => month.id === monthId)?.name ?? "vald månad";
+}
+
 function YearOverview({
   editingKey,
   editingValue,
@@ -897,6 +1006,7 @@ function YearOverview({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onRequestDelete,
   onSelectMonth,
   onSaveEdit,
   onToggleExpenses,
@@ -911,6 +1021,7 @@ function YearOverview({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onRequestDelete: (target: DeleteTarget) => void;
   onSelectMonth: (monthId: string) => void;
   onSaveEdit: () => void;
   onToggleExpenses: () => void;
@@ -1086,7 +1197,25 @@ function YearOverview({
                     ? category.items?.map((item) => (
                         <div className="contents" key={`${category.name}-${item.name}`}>
                           <div className="border-b border-stone-100 py-2.5 pr-2 text-sm text-stone-500">
-                            <span className="ml-12 block truncate">{item.name}</span>
+                            <div className="ml-12 flex min-w-0 items-center justify-between gap-2">
+                              <span className="block truncate">{item.name}</span>
+                              <button
+                                aria-label={`Ta bort ${item.name} från vald månad`}
+                                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-stone-300 transition hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
+                                onClick={() =>
+                                  onRequestDelete({
+                                    type: "item",
+                                    monthId: selectedMonthId,
+                                    categoryName: category.name,
+                                    itemName: item.name,
+                                  })
+                                }
+                                title="Ta bort"
+                                type="button"
+                              >
+                                ...
+                              </button>
+                            </div>
                           </div>
                           {months.map((month) => {
                             const target: AmountTarget = {
@@ -1207,6 +1336,7 @@ function ExpenseList({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onRequestDelete,
   onSaveEdit,
   onToggleCategory,
 }: {
@@ -1217,6 +1347,7 @@ function ExpenseList({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onRequestDelete: (target: DeleteTarget) => void;
   onSaveEdit: () => void;
   onToggleCategory: (monthId: string, categoryName: string) => void;
 }) {
@@ -1274,15 +1405,26 @@ function ExpenseList({
                       key={item.name}
                     >
                       <span className="truncate">{item.name}</span>
-                      <EditableAmount
-                        amount={item.amount}
-                        editing={editingKey === amountKey(itemTarget)}
-                        onBeginEdit={() => onBeginEdit(itemTarget, item.amount)}
-                        onCancel={onCancelEdit}
-                        onChange={onChangeEdit}
-                        onSave={onSaveEdit}
-                        value={editingValue}
-                      />
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          aria-label={`Ta bort ${item.name}`}
+                          className="grid h-7 w-7 place-items-center rounded-full text-stone-300 transition hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
+                          onClick={() => onRequestDelete(itemTarget)}
+                          title="Ta bort"
+                          type="button"
+                        >
+                          ...
+                        </button>
+                        <EditableAmount
+                          amount={item.amount}
+                          editing={editingKey === amountKey(itemTarget)}
+                          onBeginEdit={() => onBeginEdit(itemTarget, item.amount)}
+                          onCancel={onCancelEdit}
+                          onChange={onChangeEdit}
+                          onSave={onSaveEdit}
+                          value={editingValue}
+                        />
+                      </div>
                     </div>
                   );
                 })}
@@ -1340,6 +1482,104 @@ function ScopeDialog({
   );
 }
 
+function DeleteConfirmDialog({
+  itemName,
+  onCancel,
+  onConfirm,
+}: {
+  itemName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
+      <div
+        aria-modal="true"
+        className="w-full max-w-sm rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        role="dialog"
+      >
+        <p className="text-sm text-stone-500">Planerad kostnad</p>
+        <h3 className="mt-1 text-xl font-semibold text-stone-950">Ta bort {itemName}?</h3>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            className="min-h-11 rounded-lg border border-stone-200 px-4 text-sm font-medium text-stone-600 transition hover:bg-white hover:text-stone-950"
+            onClick={onCancel}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
+            onClick={onConfirm}
+            type="button"
+          >
+            Ta bort
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteScopeDialog({
+  target,
+  onCancel,
+  onConfirm,
+}: {
+  target: DeleteTarget;
+  onCancel: () => void;
+  onConfirm: (scope: ChangeScope) => void;
+}) {
+  const [scope, setScope] = useState<ChangeScope>("single");
+  const monthName = getMonthName(target.monthId).toLowerCase();
+
+  return (
+    <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
+      <div
+        aria-modal="true"
+        className="w-full max-w-sm rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        role="dialog"
+      >
+        <p className="text-sm text-stone-500">Du tar bort {target.itemName} från {monthName}.</p>
+        <h3 className="mt-1 text-xl font-semibold text-stone-950">Hur vill du göra?</h3>
+        <div className="mt-5 space-y-3">
+          {([
+            ["single", "Bara denna månad"],
+            ["future", "Denna och kommande månader"],
+            ["all", "Alla månader"],
+          ] as const).map(([value, label]) => (
+            <label className="flex items-center gap-3 text-sm text-stone-700" key={value}>
+              <input
+                checked={scope === value}
+                className="h-4 w-4 accent-stone-950"
+                onChange={() => setScope(value)}
+                type="radio"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            className="min-h-11 rounded-lg border border-stone-200 px-4 text-sm font-medium text-stone-600 transition hover:bg-white hover:text-stone-950"
+            onClick={onCancel}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
+            onClick={() => onConfirm(scope)}
+            type="button"
+          >
+            Ta bort
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddExpenseDialog({
   categories,
   draft,
@@ -1355,6 +1595,8 @@ function AddExpenseDialog({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const canSave = isValidAddExpenseDraft(draft, categories);
+
   return (
     <div className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
       <div
@@ -1378,6 +1620,7 @@ function AddExpenseDialog({
             <select
               className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none"
               onChange={(event) => onChangeDraft({ ...draft, category: event.target.value })}
+              required
               value={draft.category}
             >
               {categories.map((category) => (
@@ -1391,7 +1634,7 @@ function AddExpenseDialog({
             <input
               className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none placeholder:text-stone-300"
               onChange={(event) => onChangeDraft({ ...draft, description: event.target.value })}
-              placeholder="Parkering"
+              placeholder="Valfri"
               value={draft.description}
             />
           </label>
@@ -1403,6 +1646,7 @@ function AddExpenseDialog({
               inputMode="numeric"
               onChange={(event) => onChangeDraft({ ...draft, amount: event.target.value })}
               placeholder="2500"
+              required
               value={draft.amount}
             />
           </label>
@@ -1412,6 +1656,7 @@ function AddExpenseDialog({
             <select
               className="min-h-9 min-w-0 bg-transparent text-stone-950 outline-none"
               onChange={(event) => onChangeDraft({ ...draft, monthId: event.target.value })}
+              required
               value={draft.monthId}
             >
               {months.map((month) => (
@@ -1422,19 +1667,29 @@ function AddExpenseDialog({
             </select>
           </label>
 
-          <label className="flex min-h-12 items-center gap-3 px-3 text-sm text-stone-700">
-            <input
-              checked={draft.recurring}
-              className="h-4 w-4 accent-stone-950"
-              onChange={(event) => onChangeDraft({ ...draft, recurring: event.target.checked })}
-              type="checkbox"
-            />
-            Återkommande
-          </label>
+          <fieldset className="px-3 py-3">
+            <legend className="text-sm text-stone-500">Hur ofta?</legend>
+            <div className="mt-3 grid gap-2">
+              {expenseFrequencyOptions.map((option) => (
+                <label className="flex min-h-8 items-center gap-3 text-sm text-stone-700" key={option.value}>
+                  <input
+                    checked={draft.frequency === option.value}
+                    className="h-4 w-4 accent-stone-950"
+                    name="expense-frequency"
+                    onChange={() => onChangeDraft({ ...draft, frequency: option.value })}
+                    required
+                    type="radio"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
 
         <button
-          className="mt-6 min-h-11 w-full rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
+          className="mt-6 min-h-11 w-full rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+          disabled={!canSave}
           onClick={onSave}
           type="button"
         >
@@ -1454,6 +1709,7 @@ function MonthDetail({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onRequestDelete,
   onSaveEdit,
   onToggleCategory,
 }: {
@@ -1465,6 +1721,7 @@ function MonthDetail({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onRequestDelete: (target: DeleteTarget) => void;
   onSaveEdit: () => void;
   onToggleCategory: (monthId: string, categoryName: string) => void;
 }) {
@@ -1506,6 +1763,7 @@ function MonthDetail({
             onBeginEdit={onBeginEdit}
             onCancelEdit={onCancelEdit}
             onChangeEdit={onChangeEdit}
+            onRequestDelete={onRequestDelete}
             onSaveEdit={onSaveEdit}
             onToggleCategory={onToggleCategory}
           />
@@ -1529,6 +1787,7 @@ export default function Home() {
   const [editingTarget, setEditingTarget] = useState<AmountTarget | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDraft, setAddDraft] = useState<AddExpenseDraft>({
@@ -1536,7 +1795,7 @@ export default function Home() {
     description: "",
     amount: "",
     monthId: "apr",
-    recurring: false,
+    frequency: "once",
   });
 
   useEffect(() => {
@@ -1624,18 +1883,48 @@ export default function Home() {
     setScopeDialogOpen(false);
   }
 
+  function requestDelete(target: DeleteTarget) {
+    const item = findExpenseItem(planningData, target);
+
+    if (!item) {
+      return;
+    }
+
+    setPendingDelete({
+      target,
+      recurring: hasMultipleOccurrences(item),
+    });
+  }
+
+  function cancelDelete() {
+    setPendingDelete(null);
+  }
+
+  function confirmDelete(scope: ChangeScope) {
+    if (!pendingDelete) {
+      return;
+    }
+
+    setPlanningData((currentData) => removePlanningExpenseItem(currentData, pendingDelete.target, scope));
+    setPendingDelete(null);
+  }
+
   function openAddDialog() {
     setAddDraft({
       category: selectedMonth.categories[0]?.name ?? "Övrigt",
       description: "",
       amount: "",
       monthId: selectedMonth.id,
-      recurring: false,
+      frequency: "once",
     });
     setAddDialogOpen(true);
   }
 
   function saveAddedExpense() {
+    if (!isValidAddExpenseDraft(addDraft, categoryNames)) {
+      return;
+    }
+
     setPlanningData((currentData) => addExpenseToPlanningData(currentData, addDraft));
 
     setExpandedCategories((current) => ({
@@ -1658,6 +1947,7 @@ export default function Home() {
     setExpandedExpenses(false);
     setExpandedGridCategories({});
     setPendingEdit(null);
+    setPendingDelete(null);
     setScopeDialogOpen(false);
     setAddDialogOpen(false);
   }
@@ -1709,6 +1999,7 @@ export default function Home() {
         onBeginEdit={beginEdit}
         onCancelEdit={cancelEdit}
         onChangeEdit={setEditingValue}
+        onRequestDelete={requestDelete}
         onSelectMonth={selectMonth}
         onSaveEdit={saveEdit}
         onToggleExpenses={() => setExpandedExpenses((current) => !current)}
@@ -1726,6 +2017,7 @@ export default function Home() {
           onBeginEdit={beginEdit}
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
+          onRequestDelete={requestDelete}
           onSaveEdit={saveEdit}
           onToggleCategory={toggleCategory}
         />
@@ -1734,6 +2026,22 @@ export default function Home() {
       {scopeDialogOpen ? (
         <ScopeDialog
           onConfirm={applyPendingEdit}
+        />
+      ) : null}
+
+      {pendingDelete?.recurring ? (
+        <DeleteScopeDialog
+          onCancel={cancelDelete}
+          onConfirm={confirmDelete}
+          target={pendingDelete.target}
+        />
+      ) : null}
+
+      {pendingDelete && !pendingDelete.recurring ? (
+        <DeleteConfirmDialog
+          itemName={pendingDelete.target.itemName}
+          onCancel={cancelDelete}
+          onConfirm={() => confirmDelete("all")}
         />
       ) : null}
 
