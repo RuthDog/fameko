@@ -2,11 +2,15 @@
   "name": "fameko",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "next build",
+    "db:migrate:local": "wrangler d1 migrations apply fameko-pilot --local",
     "dev": "next dev",
-    "lint": "eslint app",
+    "lint": "eslint app middleware.ts server scripts",
+    "pilot:provision": "node --experimental-strip-types scripts/provision-pilot-user.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "test:auth": "node --experimental-strip-types --test --test-force-exit server/auth/access-token.test.ts server/auth/authorize-request.test.ts server/auth/testing/pilot-directory.test.ts server/identity/identity-repository.test.ts",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"

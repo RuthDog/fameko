@@ -7,10 +7,22 @@
 		"nodejs_compat",
 		"global_fetch_strictly_public"
 	],
+	"vars": {
+		"CF_ACCESS_TEAM_DOMAIN": "autumn-heart-3241.cloudflareaccess.com",
+		"CF_ACCESS_AUD": "d0d60ed5e0ef75350f240b08d4a06839b4af3674ac606f01db2381f3a781fe65"
+	},
 	"assets": {
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
 	},
+	"d1_databases": [
+		{
+			"binding": "FAMEKO_DB",
+			"database_name": "fameko-pilot",
+			"database_id": "db69cef7-78a2-44e2-b769-04e6c4cb8672",
+			"migrations_dir": "migrations"
+		}
+	],
 	"services": [
 		{
 			// Self-reference service binding, the service name must match the worker name
