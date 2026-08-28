@@ -2,8 +2,8 @@
 
 :root {
   color-scheme: light;
-  background: #f7f7f5;
-  color: #111111;
+  background: #f7f5ef;
+  color: #1c1917;
 }
 
 * {
@@ -24,12 +24,21 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #f7f7f5;
-  color: #111111;
+  background: #f7f5ef;
+  color: #1c1917;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
   text-rendering: geometricPrecision;
 }
 
-button {
+button,
+input,
+select {
   font: inherit;
+}
+
+::selection {
+  background: #dfe7dc;
+  color: #1c1917;
 }
