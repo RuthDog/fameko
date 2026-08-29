@@ -20,7 +20,8 @@
 			"binding": "FAMEKO_DB",
 			"database_name": "fameko-pilot",
 			"database_id": "db69cef7-78a2-44e2-b769-04e6c4cb8672",
-			"migrations_dir": "migrations"
+			"migrations_dir": "migrations",
+			"remote": true
 		}
 	],
 	"services": [

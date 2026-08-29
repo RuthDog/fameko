@@ -85,6 +85,17 @@ type PlanningData = {
   labels?: PlanningLabels;
 };
 
+type CloudPlanningYear = {
+  data: PlanningData;
+  revision: number;
+  schemaVersion: number;
+  updatedAt: string;
+  year: number;
+};
+
+type CloudLoadState = "loading" | "import" | "ready" | "error";
+type CloudSaveState = "idle" | "saving" | "saved" | "error" | "conflict";
+
 type ForecastExpenseItem = {
   id?: string;
   name: string;
@@ -680,6 +691,7 @@ const monthMetadata = seedSourceMonths.map(({ id, label, name, status }) => ({
 const monthIds = monthMetadata.map((month) => month.id);
 const defaultMonthId = monthIds[0];
 const storageKey = "fameko.planning-data.v3";
+const importDecisionKey = `fameko.cloud-import.v1.${planningYear}`;
 const showDevelopmentReset = process.env.NODE_ENV === "development";
 
 function getCurrentMonthId() {
@@ -1241,11 +1253,122 @@ function readStoredPlanningData() {
 
 function savePlanningData(data: PlanningData) {
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(storageKey, JSON.stringify(data));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(data));
+    } catch {
+      // The server is authoritative; a cache write must never block cloud save.
+    }
   }
 }
 
 const seedPlanningData = createSeedPlanningData(seedSourceMonths);
+
+function readImportDecision() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(importDecisionKey);
+  } catch {
+    return null;
+  }
+}
+
+function saveImportDecision(decision: "imported" | "declined") {
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(importDecisionKey, decision);
+    } catch {
+      // Import remains safe even when the optional local marker is unavailable.
+    }
+  }
+}
+
+class PlanningApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "PlanningApiError";
+  }
+}
+
+async function parsePlanningYearResponse(response: Response): Promise<CloudPlanningYear> {
+  const body: unknown = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      body && typeof body === "object" && "message" in body && typeof body.message === "string"
+        ? body.message
+        : "Ekonomin kunde inte hämtas just nu.";
+    throw new PlanningApiError(message, response.status);
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new PlanningApiError("Servern skickade ett ogiltigt svar.", 500);
+  }
+
+  const result = body as Record<string, unknown>;
+  if (
+    !isPlanningData(result.data) ||
+    result.schemaVersion !== 3 ||
+    !Number.isInteger(result.revision) ||
+    (result.revision as number) < 1 ||
+    result.year !== planningYear ||
+    typeof result.updatedAt !== "string"
+  ) {
+    throw new PlanningApiError("Servern skickade ett ogiltigt svar.", 500);
+  }
+
+  return result as CloudPlanningYear;
+}
+
+async function loadCloudPlanningYear(): Promise<CloudPlanningYear | null> {
+  const response = await fetch(`/app/api/planning-years/${planningYear}`, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  return parsePlanningYearResponse(response);
+}
+
+async function saveCloudPlanningYear(
+  data: PlanningData,
+  expectedRevision: number | null,
+): Promise<CloudPlanningYear> {
+  const response = await fetch(`/app/api/planning-years/${planningYear}`, {
+    body: JSON.stringify({ data, expectedRevision }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+
+  const saved = await parsePlanningYearResponse(response);
+  const verified = await loadCloudPlanningYear();
+
+  if (!verified) {
+    throw new PlanningApiError("Den sparade ekonomin kunde inte verifieras.", 500);
+  }
+
+  if (
+    verified.revision !== saved.revision ||
+    JSON.stringify(verified.data) !== JSON.stringify(saved.data)
+  ) {
+    throw new PlanningApiError(
+      "Ekonomin ändrades på en annan plats innan sparningen kunde verifieras.",
+      409,
+    );
+  }
+
+  return verified;
+}
 
 function getResolvedPlanningLabels(data: PlanningData): ResolvedPlanningLabels {
   return {
@@ -3621,6 +3744,54 @@ function AddExpenseDialog({
   );
 }
 
+function ImportPlanningDataDialog({
+  busy,
+  onImport,
+  onSkip,
+}: {
+  busy: boolean;
+  onImport: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-30 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
+      <section
+        aria-labelledby="import-planning-data-title"
+        aria-modal="true"
+        className="w-full max-w-sm rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        role="dialog"
+      >
+        <p className="text-sm text-stone-500">Vi hittade lokal data.</p>
+        <h2 className="mt-1 text-xl font-semibold text-stone-950" id="import-planning-data-title">
+          Vill du importera den till ditt konto?
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-stone-500">
+          Ditt val gäller planeringsåret {planningYear}. Ingen data slås ihop automatiskt.
+        </p>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            className="min-h-11 rounded-lg border border-stone-200 bg-white px-4 text-sm font-medium text-stone-600 transition hover:border-stone-300 hover:text-stone-950 disabled:cursor-wait disabled:opacity-60"
+            disabled={busy}
+            onClick={onSkip}
+            type="button"
+          >
+            Nej
+          </button>
+          <button
+            autoFocus
+            className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-wait disabled:bg-stone-400"
+            disabled={busy}
+            onClick={onImport}
+            type="button"
+          >
+            {busy ? "Sparar…" : "Ja"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MonthlySnapshot({ billAccountLabel, month }: { billAccountLabel: string; month: ForecastMonth }) {
   const metrics = [
     { label: "Inkomster", value: month.income },
@@ -3949,7 +4120,13 @@ function MonthDetail({
 
 export default function Home() {
   const [planningData, setPlanningData] = useState(seedPlanningData);
-  const [storageReady, setStorageReady] = useState(false);
+  const [cloudLoadState, setCloudLoadState] = useState<CloudLoadState>("loading");
+  const [cloudSaveState, setCloudSaveState] = useState<CloudSaveState>("idle");
+  const [cloudMessage, setCloudMessage] = useState("Hämtar din ekonomi…");
+  const [cloudRevision, setCloudRevision] = useState<number | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const [importCandidate, setImportCandidate] = useState<PlanningData | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   const [currentMonthId, setCurrentMonthId] = useState<string | null>(null);
   const [selectedMonthId, setSelectedMonthId] = useState(defaultMonthId);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
@@ -3982,12 +4159,7 @@ export default function Home() {
   useEffect(() => {
     const storedData = readStoredPlanningData();
     const activeMonthId = getCurrentMonthId();
-
-    if (storedData) {
-      setPlanningData(storedData);
-    } else {
-      savePlanningData(seedPlanningData);
-    }
+    let cancelled = false;
 
     if (activeMonthId) {
       setCurrentMonthId(activeMonthId);
@@ -4000,14 +4172,88 @@ export default function Home() {
       setAddDraft((current) => ({ ...current, monthId: activeMonthId }));
     }
 
-    setStorageReady(true);
+    async function loadPlanningYear() {
+      try {
+        const serverPlanningYear = await loadCloudPlanningYear();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (serverPlanningYear) {
+          setPlanningData(serverPlanningYear.data);
+          setCloudRevision(serverPlanningYear.revision);
+          setSavedSnapshot(JSON.stringify(serverPlanningYear.data));
+          savePlanningData(serverPlanningYear.data);
+          setCloudLoadState("ready");
+          setCloudMessage("");
+          return;
+        }
+
+        const hasLocalChanges =
+          storedData && JSON.stringify(storedData) !== JSON.stringify(seedPlanningData);
+        if (hasLocalChanges && !readImportDecision()) {
+          setPlanningData(storedData);
+          setImportCandidate(storedData);
+          setCloudLoadState("import");
+          setCloudMessage("Välj om din lokala data ska importeras.");
+          return;
+        }
+
+        const created = await saveCloudPlanningYear(seedPlanningData, null);
+        if (cancelled) {
+          return;
+        }
+
+        setPlanningData(created.data);
+        setCloudRevision(created.revision);
+        setSavedSnapshot(JSON.stringify(created.data));
+        savePlanningData(created.data);
+        setCloudLoadState("ready");
+        setCloudMessage("Sparat i molnet");
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        if (error instanceof PlanningApiError && error.status === 409) {
+          try {
+            const serverPlanningYear = await loadCloudPlanningYear();
+            if (serverPlanningYear && !cancelled) {
+              setPlanningData(serverPlanningYear.data);
+              setCloudRevision(serverPlanningYear.revision);
+              setSavedSnapshot(JSON.stringify(serverPlanningYear.data));
+              savePlanningData(serverPlanningYear.data);
+              setCloudLoadState("ready");
+              setCloudMessage("");
+              return;
+            }
+          } catch {
+            // The calm load error below is used for a failed race readback.
+          }
+        }
+
+        setCloudLoadState("error");
+        setCloudMessage("Din ekonomi kunde inte hämtas. Försök ladda om sidan om en liten stund.");
+      }
+    }
+
+    void loadPlanningYear();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (storageReady) {
+    if (cloudLoadState === "ready") {
       savePlanningData(planningData);
     }
-  }, [planningData, storageReady]);
+  }, [planningData, cloudLoadState]);
+
+  const currentSnapshot = JSON.stringify(planningData);
+  const hasUnsavedChanges =
+    cloudLoadState === "ready" && savedSnapshot !== null && currentSnapshot !== savedSnapshot;
 
   const months = useMemo(() => buildForecastMonths(planningData), [planningData]);
   const labels = useMemo(() => getResolvedPlanningLabels(planningData), [planningData]);
@@ -4025,6 +4271,88 @@ export default function Home() {
       })),
     [selectedMonth],
   );
+
+  function applyCloudPlanningYear(result: CloudPlanningYear, message = "") {
+    setPlanningData(result.data);
+    setCloudRevision(result.revision);
+    setSavedSnapshot(JSON.stringify(result.data));
+    savePlanningData(result.data);
+    setImportCandidate(null);
+    setCloudLoadState("ready");
+    setCloudSaveState("saved");
+    setCloudMessage(message);
+  }
+
+  async function resolveLocalImport(importLocalData: boolean) {
+    if (!importCandidate || importBusy) {
+      return;
+    }
+
+    setImportBusy(true);
+    setCloudMessage(importLocalData ? "Importerar lokal data…" : "Skapar ditt planeringsår…");
+
+    try {
+      const result = await saveCloudPlanningYear(
+        importLocalData ? importCandidate : seedPlanningData,
+        null,
+      );
+      saveImportDecision(importLocalData ? "imported" : "declined");
+      applyCloudPlanningYear(
+        result,
+        importLocalData ? "Lokal data importerad och sparad" : "Planeringsåret är klart",
+      );
+    } catch (error) {
+      if (error instanceof PlanningApiError && error.status === 409) {
+        try {
+          const serverPlanningYear = await loadCloudPlanningYear();
+          if (serverPlanningYear) {
+            applyCloudPlanningYear(serverPlanningYear, "Planeringsåret hämtades från molnet");
+            return;
+          }
+        } catch {
+          // Keep the import choice open and show the calm error below.
+        }
+      }
+
+      setCloudMessage("Ditt val kunde inte sparas. Försök igen om en liten stund.");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function saveToCloud() {
+    if (
+      cloudLoadState !== "ready" ||
+      cloudRevision === null ||
+      !hasUnsavedChanges ||
+      cloudSaveState === "saving" ||
+      cloudSaveState === "conflict"
+    ) {
+      return;
+    }
+
+    const dataToSave = planningData;
+    const snapshotToSave = JSON.stringify(dataToSave);
+    setCloudSaveState("saving");
+    setCloudMessage("Sparar…");
+
+    try {
+      const result = await saveCloudPlanningYear(dataToSave, cloudRevision);
+      setCloudRevision(result.revision);
+      setSavedSnapshot(snapshotToSave);
+      setCloudSaveState("saved");
+      setCloudMessage("Sparat i molnet");
+    } catch (error) {
+      if (error instanceof PlanningApiError && error.status === 409) {
+        setCloudSaveState("conflict");
+        setCloudMessage("Nyare data finns i molnet. Ladda om sidan innan du sparar igen.");
+        return;
+      }
+
+      setCloudSaveState("error");
+      setCloudMessage("Det gick inte att spara. Dina ändringar finns kvar på den här enheten.");
+    }
+  }
 
   function selectMonth(monthId: string) {
     setSelectedMonthId(monthId);
@@ -4247,6 +4575,41 @@ export default function Home() {
     onSaveEdit: saveNameEdit,
   };
 
+  if (cloudLoadState === "loading" || cloudLoadState === "error") {
+    return (
+      <main className="min-h-screen overflow-x-hidden bg-[#f7f5ef] text-stone-950">
+        <header className="border-b border-stone-200/70 bg-[#faf9f6]/80 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-[1560px] items-center">
+            <div className="flex items-center gap-2.5" aria-label="Fameko">
+              <div
+                aria-hidden="true"
+                className="h-8 w-8 shrink-0 bg-center bg-no-repeat"
+                style={{
+                  backgroundImage: "url('/brand/fameko-wordmark.png.png')",
+                  backgroundSize: "118%",
+                }}
+              />
+              <p className="text-base font-semibold leading-none text-[#1d252d]">Fameko</p>
+            </div>
+          </div>
+        </header>
+        <section className="mx-auto grid min-h-[60vh] max-w-lg place-items-center px-6 text-center">
+          <div>
+            <p className="text-sm font-medium text-stone-500">
+              {cloudLoadState === "loading" ? "Fameko" : "Molnlagring"}
+            </p>
+            <h1 className="mt-2 text-2xl font-semibold text-stone-950">
+              {cloudLoadState === "loading" ? "Hämtar din ekonomi" : "Din ekonomi kunde inte hämtas"}
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-stone-500" role="status">
+              {cloudMessage}
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f5ef] text-stone-950">
       <header className="border-b border-stone-200/70 bg-[#faf9f6]/80 px-4 py-4 sm:px-6 lg:px-8">
@@ -4262,15 +4625,36 @@ export default function Home() {
             />
             <p className="text-base font-semibold leading-none text-[#1d252d]">Fameko</p>
           </div>
-          {showDevelopmentReset ? (
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <p className="hidden max-w-72 text-right text-xs text-stone-500 sm:block" role="status">
+              {hasUnsavedChanges &&
+              (cloudSaveState === "idle" || cloudSaveState === "saved")
+                ? "Osparade ändringar"
+                : cloudMessage}
+            </p>
+            {showDevelopmentReset ? (
+              <button
+                className="hidden rounded-md px-2 py-1 text-xs text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 md:block"
+                onClick={resetSeedData}
+                type="button"
+              >
+                Återställ testdata
+              </button>
+            ) : null}
             <button
-              className="ml-auto rounded-md px-2 py-1 text-xs text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-              onClick={resetSeedData}
+              className="min-h-9 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+              disabled={
+                cloudLoadState !== "ready" ||
+                !hasUnsavedChanges ||
+                cloudSaveState === "saving" ||
+                cloudSaveState === "conflict"
+              }
+              onClick={() => void saveToCloud()}
               type="button"
             >
-              Återställ testdata
+              {cloudSaveState === "saving" ? "Sparar…" : "Spara"}
             </button>
-          ) : null}
+          </div>
         </div>
       </header>
 
@@ -4382,6 +4766,14 @@ export default function Home() {
           onChangeDraft={setAddDraft}
           onClose={() => setAddDialogOpen(false)}
           onSave={saveAddedExpense}
+        />
+      ) : null}
+
+      {cloudLoadState === "import" && importCandidate ? (
+        <ImportPlanningDataDialog
+          busy={importBusy}
+          onImport={() => void resolveLocalImport(true)}
+          onSkip={() => void resolveLocalImport(false)}
         />
       ) : null}
     </main>
