@@ -1,10 +1,11 @@
 import { AccessTokenError, verifyAccessToken } from "./access-token.ts";
+import { verifiedAuthContextFromAccessClaims } from "./access-auth-context.ts";
 import { DatabaseUnavailableError, getFamekoDatabase } from "../cloudflare/database.ts";
 import {
-  IdentityAuthorizationError,
-  resolveAuthorizedIdentity,
-} from "../identity/resolve-identity.ts";
-import { IdentityRepository } from "../identity/identity-repository.ts";
+  FirstLoginProvisioningError,
+  resolveOrProvisionAuthorizedIdentity,
+} from "../identity/first-login-provisioning.ts";
+import { IdentityAuthorizationError } from "../identity/resolve-identity.ts";
 import type { AuthorizedPilotContext } from "../identity/identity-types";
 
 export type AuthorizationFailureCode =
@@ -12,6 +13,7 @@ export type AuthorizationFailureCode =
   | "database_unavailable"
   | "household_missing"
   | "identity_missing"
+  | "provisioning_failed"
   | "token_invalid"
   | "token_missing"
   | "user_disabled"
@@ -48,8 +50,8 @@ export async function authorizeRequest(
   try {
     const claims = await verifyAccessToken(token, teamDomain, audience);
     const database = options.database ?? (await getFamekoDatabase());
-    const repository = new IdentityRepository(database);
-    const context = await resolveAuthorizedIdentity(repository, claims);
+    const authContext = verifiedAuthContextFromAccessClaims(claims);
+    const context = await resolveOrProvisionAuthorizedIdentity(database, authContext);
     return { context, ok: true };
   } catch (error) {
     if (error instanceof IdentityAuthorizationError) {
@@ -58,6 +60,10 @@ export async function authorizeRequest(
 
     if (error instanceof AccessTokenError) {
       return { code: "token_invalid", ok: false };
+    }
+
+    if (error instanceof FirstLoginProvisioningError) {
+      return { code: "provisioning_failed", ok: false };
     }
 
     if (error instanceof DatabaseUnavailableError) {

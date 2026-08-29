@@ -31,6 +31,11 @@ const errorPresentations: Record<AuthorizationFailureCode, ErrorPresentation> = 
     status: 403,
     title: "Du har inte tillgång ännu",
   },
+  provisioning_failed: {
+    description: "Försök igen om en liten stund.",
+    status: 503,
+    title: "Ditt konto kunde inte skapas just nu",
+  },
   token_invalid: {
     description: "Din inloggning kunde inte bekräftas. Gå tillbaka och logga in igen.",
     status: 401,

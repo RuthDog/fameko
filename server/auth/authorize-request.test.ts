@@ -102,7 +102,54 @@ test("authorize-request uses verified Access identity and D1 as one fail-closed 
       }),
       { database, environment },
     );
-    assert.deepEqual(unknown, { code: "identity_missing", ok: false });
+    assert.equal(unknown.ok, true);
+    if (unknown.ok) {
+      assert.notEqual(unknown.context.user.id, provisioned.userId);
+      assert.equal(unknown.context.identity.provider_subject, "unknown-subject");
+    }
+
+    const counts = await database
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM users) AS users,
+           (SELECT COUNT(*) FROM households) AS households,
+           (SELECT COUNT(*) FROM household_members) AS memberships,
+           (SELECT COUNT(*) FROM auth_identities) AS identities,
+           (SELECT COUNT(*) FROM planning_years) AS planning_years`,
+      )
+      .first<{
+        households: number;
+        identities: number;
+        memberships: number;
+        planning_years: number;
+        users: number;
+      }>();
+    assert.deepEqual(counts, {
+      households: 2,
+      identities: 2,
+      memberships: 2,
+      planning_years: 2,
+      users: 2,
+    });
+
+    await database
+      .prepare(
+        `CREATE TRIGGER reject_authorized_planning_year
+         BEFORE INSERT ON planning_years
+         BEGIN
+           SELECT RAISE(ABORT, 'planned authorization failure');
+         END`,
+      )
+      .run();
+    const failingToken = await createToken(pair.privateKey, "failing-subject");
+    const failedProvisioning = await authorizeRequest(
+      new Request("https://fameko.se/app", {
+        headers: { "Cf-Access-Jwt-Assertion": failingToken },
+      }),
+      { database, environment },
+    );
+    assert.deepEqual(failedProvisioning, { code: "provisioning_failed", ok: false });
+    await database.prepare("DROP TRIGGER reject_authorized_planning_year").run();
 
     const unavailableDatabase = {
       prepare() {

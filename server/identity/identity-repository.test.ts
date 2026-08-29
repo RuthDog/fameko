@@ -7,6 +7,7 @@ import { unstable_splitSqlQuery } from "wrangler";
 
 import type { AccessClaims } from "../auth/access-token.ts";
 import { IdentityRepository } from "./identity-repository.ts";
+import type { VerifiedAuthContext } from "./identity-types.ts";
 import { provisionPilotIdentity } from "./provision-pilot.ts";
 import {
   IdentityAuthorizationError,
@@ -14,15 +15,18 @@ import {
 } from "./resolve-identity.ts";
 
 const migrationUrl = new URL("../../migrations/0001_identity_foundation.sql", import.meta.url);
-const baseClaims: AccessClaims = {
+const baseClaims: AccessClaims & VerifiedAuthContext = {
   aud: "audience",
   email: "pilot-a@example.test",
   exp: 2_000_000_000,
   iat: 1_900_000_000,
   iss: "https://fameko.cloudflareaccess.com",
   nbf: 1_900_000_000,
+  provider: "cloudflare_access",
+  providerSubject: "subject-a",
   sub: "subject-a",
   type: "app",
+  verifiedEmail: "pilot-a@example.test",
 };
 
 async function createDatabase() {

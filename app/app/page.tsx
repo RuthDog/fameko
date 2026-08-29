@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  currentPlanningYear,
+  seedPlanningDataV3,
+} from "../../shared/planning/seed-planning-data.ts";
+
 type Status = "green" | "yellow" | "red";
 type ChangeScope = "single" | "future";
 type ExpenseFrequency =
@@ -208,7 +213,7 @@ const areaItemRows = [...mortgageRows, ...savingsRows];
 const directAllocationCategoryIds = new Set(["mat", "sparande"]);
 const rowNameMaxLength = 48;
 
-const planningYear = 2026;
+const planningYear = currentPlanningYear;
 const planningYears = [2023, 2024, 2025, planningYear];
 
 const expenseFrequencyOptions: { value: ExpenseFrequency; label: string; interval: number | null }[] = [
@@ -606,13 +611,6 @@ function parseSignedAmount(value: string) {
   return /[-−]/.test(value) ? -amount : amount;
 }
 
-function createMonthValues(months: ForecastMonth[], values: (month: ForecastMonth) => number) {
-  return months.reduce<MonthValue>((monthValues, month) => {
-    monthValues[month.id] = values(month);
-    return monthValues;
-  }, {});
-}
-
 function makeId(value: string) {
   return (
     value
@@ -697,82 +695,6 @@ const showDevelopmentReset = process.env.NODE_ENV === "development";
 function getCurrentMonthId() {
   const today = new Date();
   return today.getFullYear() === planningYear ? monthIds[today.getMonth()] : null;
-}
-
-function createSeedPlanningData(months: ForecastMonth[]): PlanningData {
-  const expenseCategories = months[0].categories.map((category, order) => ({
-    id: makeId(category.name),
-    name: category.name,
-    order,
-  }));
-
-  const expenseItems = expenseCategories.flatMap((category) => {
-    const categoryMonths = months.map((month) =>
-      month.categories.find((currentCategory) => currentCategory.name === category.name),
-    );
-    const itemNames = [
-      ...new Set(
-        categoryMonths.flatMap((currentCategory) =>
-          currentCategory?.items?.map((item) => item.name) ?? [],
-        ),
-      ),
-    ];
-
-    if (!itemNames.length) {
-      return [
-        {
-          id: `${category.id}-${category.id}`,
-          category: category.id,
-          name: category.name,
-          monthlyValues: createMonthValues(
-            months,
-            (month) =>
-              parseAmount(
-                month.categories.find((currentCategory) => currentCategory.name === category.name)
-                  ?.amount ?? "0 kr",
-              ),
-          ),
-          recurring: true,
-        },
-      ];
-    }
-
-    return itemNames.map((itemName) => {
-      const monthlyValues = createMonthValues(
-        months,
-        (month) =>
-          parseAmount(
-            month.categories
-              .find((currentCategory) => currentCategory.name === category.name)
-              ?.items?.find((item) => item.name === itemName)?.amount ?? "0 kr",
-          ),
-      );
-      const nonZeroMonths = Object.values(monthlyValues).filter((value) => value > 0);
-
-      return {
-        id: `${category.id}-${makeId(itemName)}`,
-        category: category.id,
-        name: itemName,
-        monthlyValues,
-        recurring: nonZeroMonths.length > 1,
-      };
-    });
-  });
-
-  return {
-    version: 3,
-    openingBalance: parseAmount(months[0].startBalance),
-    incomes: [
-      {
-        id: "income-salary",
-        name: "Inkomster",
-        monthlyValues: createMonthValues(months, (month) => parseAmount(month.income)),
-        recurring: true,
-      },
-    ],
-    expenseCategories,
-    expenseItems,
-  };
 }
 
 function getDefaultAllocationValue(
@@ -1261,7 +1183,7 @@ function savePlanningData(data: PlanningData) {
   }
 }
 
-const seedPlanningData = createSeedPlanningData(seedSourceMonths);
+const seedPlanningData: PlanningData = seedPlanningDataV3;
 
 function readImportDecision() {
   if (typeof window === "undefined") {

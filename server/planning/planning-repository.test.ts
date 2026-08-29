@@ -5,6 +5,7 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { unstable_splitSqlQuery } from "wrangler";
 
+import { seedPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
 import { PlanningRepository } from "./planning-repository.ts";
 import { isPlanningData } from "./planning-schema.ts";
 
@@ -64,6 +65,7 @@ async function createDatabase() {
 }
 
 test("PlanningData v3 validation accepts the complete Workspace shape", () => {
+  assert.equal(isPlanningData(seedPlanningDataV3), true);
   assert.equal(isPlanningData(createPlanningData()), true);
   assert.equal(isPlanningData({ ...createPlanningData(), version: 4 }), false);
   assert.equal(

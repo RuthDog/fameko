@@ -1,6 +1,5 @@
-import type { AccessClaims } from "../auth/access-token";
 import { IdentityRepository } from "./identity-repository.ts";
-import type { AuthorizedPilotContext } from "./identity-types";
+import type { AuthorizedPilotContext, VerifiedAuthContext } from "./identity-types";
 
 export type IdentityAuthorizationErrorCode =
   | "household_missing"
@@ -21,15 +20,14 @@ export class IdentityAuthorizationError extends Error {
 
 export async function resolveAuthorizedIdentity(
   repository: IdentityRepository,
-  claims: AccessClaims,
+  authContext: VerifiedAuthContext,
 ): Promise<AuthorizedPilotContext> {
-  const identity = await repository.findAuthIdentity("cloudflare_access", claims.sub);
+  const identity = await repository.findAuthIdentity(
+    authContext.provider,
+    authContext.providerSubject,
+  );
 
   if (!identity) {
-    throw new IdentityAuthorizationError("identity_missing");
-  }
-
-  if (identity.email && identity.email.trim().toLowerCase() !== claims.email) {
     throw new IdentityAuthorizationError("identity_missing");
   }
 

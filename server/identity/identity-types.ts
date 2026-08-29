@@ -39,3 +39,9 @@ export type AuthorizedPilotContext = {
   membership: HouseholdMember;
   user: FamekoUser;
 };
+
+export type VerifiedAuthContext = {
+  provider: string;
+  providerSubject: string;
+  verifiedEmail: string;
+};
