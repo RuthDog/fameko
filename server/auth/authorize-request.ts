@@ -1,5 +1,6 @@
 import { AccessTokenError, verifyAccessToken } from "./access-token.ts";
 import { verifiedAuthContextFromAccessClaims } from "./access-auth-context.ts";
+import { getLocalDevelopmentAuthContext } from "./development-auth.ts";
 import { DatabaseUnavailableError, getFamekoDatabase } from "../cloudflare/database.ts";
 import {
   FirstLoginProvisioningError,
@@ -21,7 +22,7 @@ export type AuthorizationFailureCode =
   | "user_missing";
 
 export type AuthorizationResult =
-  | { context: AuthorizedPilotContext; ok: true }
+  | { context: AuthorizedPilotContext; mode: "access" | "development"; ok: true }
   | { code: AuthorizationFailureCode; ok: false };
 
 type AuthorizeRequestOptions = {
@@ -34,6 +35,12 @@ export async function authorizeRequest(
   options: AuthorizeRequestOptions = {},
 ): Promise<AuthorizationResult> {
   const environment = options.environment ?? process.env;
+  const developmentContext = getLocalDevelopmentAuthContext(request, environment);
+
+  if (developmentContext) {
+    return { context: developmentContext, mode: "development", ok: true };
+  }
+
   const token = request.headers.get("cf-access-jwt-assertion");
 
   if (!token) {
@@ -52,7 +59,7 @@ export async function authorizeRequest(
     const database = options.database ?? (await getFamekoDatabase());
     const authContext = verifiedAuthContextFromAccessClaims(claims);
     const context = await resolveOrProvisionAuthorizedIdentity(database, authContext);
-    return { context, ok: true };
+    return { context, mode: "access", ok: true };
   } catch (error) {
     if (error instanceof IdentityAuthorizationError) {
       return { code: error.code, ok: false };

@@ -27,7 +27,7 @@ export async function requirePlanningAuthorization(request: Request) {
     };
   }
 
-  return { context: authorization.context };
+  return { context: authorization.context, mode: authorization.mode };
 }
 
 export function isSameOriginJsonRequest(request: Request): boolean {

@@ -11,6 +11,13 @@ import { isPlanningData } from "./planning-schema.ts";
 
 const migrationUrl = new URL("../../migrations/0001_identity_foundation.sql", import.meta.url);
 const monthIds = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+const housingData = {
+  propertyValue: 4_200_000,
+  valuationDate: "2026-08-29",
+  totalMortgage: 2_450_000,
+  averageInterestRate: 3.68,
+  monthlyAmortization: 2_400,
+};
 
 function createPlanningData(openingBalance = 10_000) {
   const monthlyValues = Object.fromEntries(monthIds.map((monthId) => [monthId, 1_000]));
@@ -67,11 +74,44 @@ async function createDatabase() {
 test("PlanningData v3 validation accepts the complete Workspace shape", () => {
   assert.equal(isPlanningData(seedPlanningDataV3), true);
   assert.equal(isPlanningData(createPlanningData()), true);
+  assert.equal(isPlanningData({ ...createPlanningData(), housingData }), true);
+  assert.equal(
+    isPlanningData({
+      ...createPlanningData(),
+      housingData: { ...housingData, averageInterestRate: 101 },
+    }),
+    false,
+  );
   assert.equal(isPlanningData({ ...createPlanningData(), version: 4 }), false);
   assert.equal(
     isPlanningData({ ...createPlanningData(), openingBalance: Number.POSITIVE_INFINITY }),
     false,
   );
+});
+
+test("HousingData round-trips inside authoritative PlanningData", async () => {
+  const { database, miniflare } = await createDatabase();
+
+  try {
+    const repository = new PlanningRepository(database);
+    const data = { ...createPlanningData(), housingData };
+    const created = await repository.create("household-a", 2026, data, 3);
+    assert.ok(created);
+    assert.deepEqual((await repository.get("household-a", 2026))?.data.housingData, housingData);
+
+    const updatedHousingData = { ...housingData, propertyValue: 4_350_000 };
+    const updated = await repository.update(
+      "household-a",
+      2026,
+      created.revision,
+      { ...data, housingData: updatedHousingData },
+      3,
+    );
+    assert.equal(updated?.revision, 2);
+    assert.deepEqual(updated?.data.housingData, updatedHousingData);
+  } finally {
+    await miniflare.dispose();
+  }
 });
 
 test("create stores one complete authoritative JSON document with revision one", async () => {

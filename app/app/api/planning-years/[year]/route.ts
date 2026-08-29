@@ -5,6 +5,10 @@ import {
   isSameOriginJsonRequest,
   requirePlanningAuthorization,
 } from "../../../../../server/planning/planning-http.ts";
+import {
+  getDevelopmentPlanningYear,
+  saveDevelopmentPlanningYear,
+} from "../../../../../server/planning/development-planning-store.ts";
 import { PlanningRepository } from "../../../../../server/planning/planning-repository.ts";
 import {
   isPlanningData,
@@ -59,6 +63,12 @@ export async function GET(request: Request, routeContext: RouteContext) {
   }
 
   try {
+    if (authorization.mode === "development") {
+      return planningYearResponse(
+        getDevelopmentPlanningYear(authorization.context.household.id, year),
+      );
+    }
+
     const repository = new PlanningRepository(await getFamekoDatabase());
     return planningYearResponse(await repository.get(authorization.context.household.id, year));
   } catch {
@@ -114,22 +124,34 @@ export async function PUT(request: Request, routeContext: RouteContext) {
   }
 
   try {
-    const repository = new PlanningRepository(await getFamekoDatabase());
-    const planningYear =
-      expectedRevision === null
-        ? await repository.create(
-            authorization.context.household.id,
-            year,
-            data,
-            planningDataVersion,
-          )
-        : await repository.update(
+    let planningYear;
+
+    if (authorization.mode === "development") {
+      planningYear = saveDevelopmentPlanningYear(
+        authorization.context.household.id,
+        year,
+        expectedRevision as number | null,
+        data,
+        planningDataVersion,
+      );
+    } else {
+      const repository = new PlanningRepository(await getFamekoDatabase());
+      planningYear =
+        expectedRevision === null
+          ? await repository.create(
+              authorization.context.household.id,
+              year,
+              data,
+              planningDataVersion,
+            )
+          : await repository.update(
             authorization.context.household.id,
             year,
             expectedRevision as number,
             data,
             planningDataVersion,
           );
+    }
 
     if (!planningYear) {
       return NextResponse.json(

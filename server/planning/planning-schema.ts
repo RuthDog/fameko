@@ -1,3 +1,5 @@
+import { isHousingData } from "../../shared/planning/housing.ts";
+
 const monthIds = [
   "jan",
   "feb",
@@ -173,6 +175,7 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
       "areaItemValues",
       "incomeLineValues",
       "labels",
+      "housingData",
     ])
   ) {
     return false;
@@ -193,7 +196,8 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
     isOptionalValueMap(value.allocationOverrides, allocationKeys) &&
     isOptionalValueMap(value.areaItemValues, areaItemKeys) &&
     isOptionalValueMap(value.incomeLineValues, incomeLineKeys) &&
-    hasValidLabels(value.labels)
+    hasValidLabels(value.labels) &&
+    (value.housingData === undefined || isHousingData(value.housingData))
   );
 }
 

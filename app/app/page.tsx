@@ -1,11 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 import {
   currentPlanningYear,
   seedPlanningDataV3,
 } from "../../shared/planning/seed-planning-data.ts";
+import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
+import { type CarPreviewEconomics } from "../../shared/planning/personal-economy.ts";
+import { PersonalEconomySection } from "./personal-economy-section.tsx";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = "single" | "future";
@@ -84,6 +88,7 @@ type PlanningData = {
   incomes: Income[];
   expenseCategories: ExpenseCategory[];
   expenseItems: ExpenseItem[];
+  housingData?: HousingData;
   allocationOverrides?: AllocationOverrides;
   areaItemValues?: AreaItemValues;
   incomeLineValues?: IncomeLineValues;
@@ -1121,6 +1126,8 @@ function isPlanningData(value: unknown): value is PlanningData {
             Object.values(values).every((amount) => typeof amount === "number"))
         );
       }));
+  const hasValidHousingData =
+    data.housingData === undefined || isHousingData(data.housingData);
 
   return (
     data.version === 3 &&
@@ -1128,6 +1135,7 @@ function isPlanningData(value: unknown): value is PlanningData {
     hasValidAllocationOverrides &&
     hasValidAreaItemValues &&
     hasValidIncomeLineValues &&
+    hasValidHousingData &&
     typeof data.openingBalance === "number" &&
     Array.isArray(data.incomes) &&
     Array.isArray(data.expenseCategories) &&
@@ -1453,6 +1461,14 @@ function getCategoryAmount(month: ForecastMonth, categoryId: string) {
   return month.categories.find((category) => category.id === categoryId)?.amount ?? "0 kr";
 }
 
+function getCategoryItemAmount(month: ForecastMonth, categoryId: string, itemId: string) {
+  return (
+    month.categories
+      .find((category) => category.id === categoryId)
+      ?.items?.find((item) => item.id === itemId)?.amount ?? "0 kr"
+  );
+}
+
 function getBillAccountCategories(month: ForecastMonth) {
   return month.categories.filter(
     (category) => category.id && !directAllocationCategoryIds.has(category.id),
@@ -1534,6 +1550,27 @@ function getRemainingYearTotal(months: ForecastMonth[]) {
   return formatAmount(
     months.reduce((total, month) => total + parseSignedAmount(getRemainingAmount(month)), 0),
   );
+}
+
+function getSavingsRate(month: ForecastMonth) {
+  const income = parseAmount(month.income);
+
+  if (income === 0) {
+    return null;
+  }
+
+  return (parseAmount(getAllocationAmount(month, "savings")) / income) * 100;
+}
+
+function formatSavingsRate(rate: number | null) {
+  if (rate === null) {
+    return "—";
+  }
+
+  return `${rate.toLocaleString("sv-SE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} %`;
 }
 
 function getIncomeLineAmount(month: ForecastMonth, key: IncomeLineKey) {
@@ -3756,18 +3793,20 @@ function MonthlySnapshot({ billAccountLabel, month }: { billAccountLabel: string
   return (
     <aside
       aria-label={`Översikt för denna månad, ${month.name}`}
-      className="overflow-hidden rounded-lg border border-stone-200/90 bg-white shadow-[0_14px_40px_rgba(28,25,23,0.045)]"
+      className="overflow-hidden rounded-[16px] border border-white/80 bg-white/78 shadow-[0_14px_40px_rgba(28,25,23,0.08)] backdrop-blur-md"
     >
-      <div className="flex items-baseline justify-between gap-4 border-b border-stone-100 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-4 border-b border-stone-200/70 px-4 py-3">
         <p className="text-sm font-medium text-stone-950">Denna månad</p>
         <p className="text-xs text-stone-400">{month.name}</p>
       </div>
       <dl className="grid grid-cols-2 sm:grid-cols-5">
         {metrics.map((metric, index) => (
           <div
-            className={`min-w-0 px-3 py-3 ${index % 2 ? "border-l border-stone-100" : ""} ${
-              index < 4 ? "border-b border-stone-100 sm:border-b-0" : "col-span-2 sm:col-span-1"
-            } ${index > 0 ? "sm:border-l sm:border-stone-100" : "sm:border-l-0"}`}
+            className={`min-w-0 px-3 py-3 ${index % 2 ? "border-l border-stone-200/70" : ""} ${
+              index < 4
+                ? "border-b border-stone-200/70 sm:border-b-0"
+                : "col-span-2 sm:col-span-1"
+            } ${index > 0 ? "sm:border-l sm:border-stone-200/70" : "sm:border-l-0"}`}
             key={metric.label}
           >
             <dt className="truncate text-[11px] text-stone-400" title={metric.label}>{metric.label}</dt>
@@ -3778,6 +3817,77 @@ function MonthlySnapshot({ billAccountLabel, month }: { billAccountLabel: string
         ))}
       </dl>
     </aside>
+  );
+}
+
+function EconomicOverview({ month }: { month: ForecastMonth }) {
+  const savings = getAllocationAmount(month, "savings");
+  const savingsRate = getSavingsRate(month);
+  const savingsProgress = savingsRate === null ? 0 : Math.min(Math.max(savingsRate, 0), 100);
+  const metrics = [
+    { label: "Inkomster", value: month.income, detail: "Efter skatt" },
+    { label: "Fördelat", value: month.expenses, detail: "Till månadens områden" },
+    {
+      label: "Kvar att fördela",
+      value: getRemainingAmount(month),
+      detail: "Efter fördelningar",
+    },
+    { label: "Sparande", value: savings, detail: "Planerat sparande" },
+    {
+      label: "Sparkvot",
+      value: formatSavingsRate(savingsRate),
+      detail: savingsRate === null ? "Ingen inkomst denna månad" : "Sparande / inkomster",
+      visual: true,
+    },
+  ];
+
+  return (
+    <section
+      aria-labelledby="economic-overview-title"
+      className="mx-auto w-full max-w-[1560px] px-4 pb-7 sm:px-6 sm:pb-8 lg:px-8"
+    >
+      <div className="mb-3 flex items-baseline justify-between gap-4 px-1">
+        <h2
+          className="text-sm font-semibold tracking-[-0.01em] text-stone-800"
+          id="economic-overview-title"
+        >
+          Översikt
+        </h2>
+        <p className="text-xs text-stone-400">{month.name}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[18px] border border-stone-200/80 bg-stone-200/80 shadow-[0_10px_30px_rgba(28,25,23,0.025)] lg:grid-cols-5">
+        {metrics.map((metric, index) => (
+          <dl
+            className={`min-w-0 bg-white px-4 py-4 sm:px-5 sm:py-5 ${
+              index === metrics.length - 1 ? "col-span-2 lg:col-span-1" : ""
+            }`}
+            key={metric.label}
+          >
+            <dt className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">
+              {metric.label}
+            </dt>
+            <dd className="mt-2 truncate text-xl font-semibold tracking-[-0.025em] tabular-nums text-stone-900 sm:text-[22px]">
+              {metric.value}
+            </dd>
+            <dd className="mt-1 text-xs text-stone-400">
+              <span className="block truncate">{metric.detail}</span>
+              {metric.visual ? (
+                <div
+                  aria-hidden="true"
+                  className="mt-3 h-1 overflow-hidden rounded-full bg-stone-100"
+                >
+                  <div
+                    className="h-full rounded-full bg-[#7f927d]"
+                    style={{ width: `${savingsProgress}%` }}
+                  />
+                </div>
+              ) : null}
+            </dd>
+          </dl>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -4214,6 +4324,17 @@ export default function Home() {
     months.find((month) => month.id === selectedMonthId) ?? months[0];
   const currentMonth =
     months.find((month) => month.id === currentMonthId) ?? selectedMonth;
+  const carPreview: CarPreviewEconomics = {
+    loanPayment: parseAmount(getCategoryItemAmount(currentMonth, "bil", "bil-billan")),
+    monthlyCost: parseAmount(getCategoryAmount(currentMonth, "bil")),
+    monthlyIncome: parseAmount(currentMonth.income),
+  };
+  const savingsPreview = {
+    monthlyIncome: months.map((month) => parseAmount(month.income)),
+    monthlySavings: months.map((month) =>
+      parseAmount(getAllocationAmount(month, "savings")),
+    ),
+  };
 
   const categoryOptions = useMemo(
     () =>
@@ -4610,19 +4731,55 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[1560px] px-4 pb-6 pt-7 sm:px-6 sm:pb-7 sm:pt-8 lg:px-8">
-        <section className="grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(460px,560px)]">
-          <div>
-            <p className="text-sm font-medium text-stone-500">Kommande 12 månader</p>
-            <h1 className="mt-2 max-w-5xl text-3xl font-semibold leading-tight text-stone-950 sm:text-4xl">
+      <section
+        aria-labelledby="workspace-hero-title"
+        className="mx-auto w-full max-w-[1560px] px-4 pb-6 pt-4 sm:px-6 sm:pb-7 sm:pt-5 lg:px-8 lg:pt-6"
+      >
+        <div className="relative h-[480px] overflow-hidden rounded-[22px] border border-white/70 bg-stone-200 shadow-[0_18px_56px_rgba(28,25,23,0.065)] sm:h-[340px] sm:rounded-[26px] lg:h-[380px] xl:h-[396px]">
+          <Image
+            alt=""
+            aria-hidden="true"
+            className="object-cover object-[68%_52%] sm:object-[47%_52%]"
+            fill
+            priority
+            sizes="(max-width: 640px) calc(100vw - 32px), (max-width: 1024px) calc(100vw - 48px), min(1496px, calc(100vw - 64px))"
+            src="/images/dashboard/hero-dashboard.webp"
+            unoptimized
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#f7f5ef]/95 via-[#f7f5ef]/60 via-[56%] to-[#f7f5ef]/10 sm:via-[#f7f5ef]/45 sm:to-transparent lg:via-[#f7f5ef]/30"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#f7f5ef]/20 via-transparent to-white/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
+          />
+
+          <div className="relative z-10 grid h-full content-center gap-5 px-5 py-6 sm:px-8 sm:py-7 lg:grid-cols-[minmax(0,1fr)_minmax(460px,560px)] lg:items-center lg:gap-10 lg:px-12 xl:px-16">
+            <div className="max-w-[520px]">
+              <h1
+                className="max-w-5xl text-[28px] font-semibold leading-[1.08] tracking-[-0.035em] text-stone-950 sm:text-3xl lg:text-4xl"
+                id="workspace-hero-title"
+              >
               Ditt ekonomiska år
-            </h1>
+              </h1>
+              <p className="mt-4 max-w-[480px] text-sm leading-6 text-stone-700 sm:text-[15px]">
+                Planera hela årets ekonomi och se hur dina beslut påverkar resten av året.
+              </p>
+              <p className="mt-3 text-xs text-stone-500">Alla belopp visas efter skatt.</p>
+            </div>
+
+            <div className="w-full translate-y-3 self-center lg:max-w-[560px] lg:justify-self-end">
+              <MonthlySnapshot
+                billAccountLabel={labels.allocations.billAccount}
+                month={currentMonth}
+              />
+            </div>
           </div>
-          <div className="hidden sm:block">
-            <MonthlySnapshot billAccountLabel={labels.allocations.billAccount} month={currentMonth} />
-          </div>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      <EconomicOverview month={currentMonth} />
 
       <YearNavigation />
 
@@ -4651,10 +4808,6 @@ export default function Home() {
         selectedMonthId={selectedMonth.id}
       />
 
-      <div className="mx-auto w-full max-w-[1560px] px-4 pt-6 sm:hidden">
-        <MonthlySnapshot billAccountLabel={labels.allocations.billAccount} month={currentMonth} />
-      </div>
-
       <div className="sm:hidden">
         <MonthDetail
           editingKey={editingTarget ? amountKey(editingTarget) : null}
@@ -4679,6 +4832,12 @@ export default function Home() {
           onToggleSavings={() => setExpandedSavings((current) => !current)}
         />
       </div>
+
+      <PersonalEconomySection
+        carPreview={carPreview}
+        housingData={planningData.housingData}
+        savingsPreview={savingsPreview}
+      />
 
       <ProductFooter />
 
