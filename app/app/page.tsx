@@ -1563,14 +1563,23 @@ function getScopeOptions(monthId: string): { value: ChangeScope; label: string }
   ];
 }
 
+const desktopStickyLabelCell =
+  "sticky left-0 z-20 bg-white shadow-[1px_0_0_rgba(214,211,209,0.8)]";
+
 function DesktopSectionHeading({ first = false, label }: { first?: boolean; label: string }) {
+  const spacing = first ? "pt-6" : "pt-10";
+
   return (
-    <div className={`col-span-full flex items-center gap-4 pb-3 ${first ? "pt-6" : "pt-10"}`}>
-      <h2 className="shrink-0 text-[13px] font-semibold uppercase leading-none tracking-[0.08em] text-stone-700">
-        {label}
-      </h2>
-      <span aria-hidden="true" className="h-px min-w-8 flex-1 bg-stone-300/80" />
-    </div>
+    <>
+      <div className={`${desktopStickyLabelCell} flex items-center pb-3 ${spacing}`}>
+        <h2 className="shrink-0 text-[13px] font-semibold uppercase leading-none tracking-[0.08em] text-stone-700">
+          {label}
+        </h2>
+      </div>
+      <div className={`col-span-13 flex items-center pb-3 pl-4 ${spacing}`}>
+        <span aria-hidden="true" className="h-px min-w-8 flex-1 bg-stone-300/80" />
+      </div>
+    </>
   );
 }
 
@@ -1587,7 +1596,9 @@ function DesktopFutureArea({
 }) {
   return (
     <div className="contents">
-      <div className="flex items-center border-b border-stone-100 py-3 pr-2 text-sm text-stone-400">
+      <div
+        className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 py-3 pr-2 text-sm text-stone-400`}
+      >
         <span className="truncate">Investeringar</span>
       </div>
       <div className="border-b border-stone-100 bg-stone-50/80 px-1 py-3 text-center text-xs text-stone-400 lg:text-sm">
@@ -1681,7 +1692,7 @@ function DesktopGridRow({
       {onToggle ? (
         <button
           aria-expanded={expanded}
-          className={`flex items-center gap-2 border-b border-stone-100 pr-2 text-left transition hover:text-stone-950 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${rowTextSize} ${rowPadding} ${toggleIndent} ${weight} ${tone} ${divider} ${groupMarker} ${resultEdge}`}
+          className={`${desktopStickyLabelCell} flex items-center gap-2 border-b border-stone-100 pr-2 text-left transition hover:text-stone-950 focus-visible:z-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${rowTextSize} ${rowPadding} ${toggleIndent} ${weight} ${tone} ${divider} ${groupMarker} ${resultEdge}`}
           onClick={onToggle}
           type="button"
         >
@@ -1697,7 +1708,7 @@ function DesktopGridRow({
         </button>
       ) : (
         <div
-          className={`flex items-center border-b border-stone-100 pr-2 ${rowTextSize} ${rowPadding} ${labelIndent} ${weight} ${tone} ${divider} ${resultEdge}`}
+          className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 pr-2 ${rowTextSize} ${rowPadding} ${labelIndent} ${weight} ${tone} ${divider} ${resultEdge}`}
         >
           <span className="truncate" title={label}>{label}</span>
         </div>
@@ -1753,7 +1764,9 @@ function DesktopOpeningBalanceRow({
 
   return (
     <div className="contents">
-      <div className="flex items-center border-b border-l border-stone-100 border-l-stone-200 py-3 pl-10 pr-2 text-sm text-stone-700">
+      <div
+        className={`${desktopStickyLabelCell} flex items-center border-b border-l border-stone-100 border-l-stone-200 py-3 pl-10 pr-2 text-sm text-stone-700`}
+      >
         <span className="truncate">Startsaldo</span>
       </div>
       <div className="grid min-w-0 place-items-center border-b border-stone-100 bg-stone-50/80 px-1 py-2 text-xs lg:text-sm">
@@ -1820,7 +1833,9 @@ function DesktopIncomeLineRow({
 
   return (
     <div className="contents">
-      <div className="flex items-center border-b border-stone-100 py-3 pl-6 pr-2 text-sm text-stone-700">
+      <div
+        className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 py-3 pl-6 pr-2 text-sm text-stone-700`}
+      >
         <EditableName
           ariaLabel={`Redigera namnet ${label}`}
           cell
@@ -1908,7 +1923,9 @@ function DesktopAllocationRow({
 
   return (
     <div className="contents">
-      <div className={`flex items-center border-b border-stone-100 py-3 pl-6 pr-2 text-sm ${tone}`}>
+      <div
+        className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 py-3 pl-6 pr-2 text-sm ${tone}`}
+      >
         <EditableName
           ariaLabel={`Redigera namnet ${label}`}
           cell
@@ -1996,7 +2013,9 @@ function DesktopAreaItemRow({
 
   return (
     <div className="contents">
-      <div className={`flex items-center border-b border-l border-stone-100 border-l-stone-200 py-3 pl-10 pr-2 text-sm ${tone}`}>
+      <div
+        className={`${desktopStickyLabelCell} flex items-center border-b border-l border-stone-100 border-l-stone-200 py-3 pl-10 pr-2 text-sm ${tone}`}
+      >
         <EditableName
           ariaLabel={`Redigera namnet ${label}`}
           cell
@@ -2140,7 +2159,7 @@ function YearOverview({
     return (
       <div className="contents" key={`category-${categoryId}`}>
         <div
-          className={`flex items-center gap-1 border-b border-stone-100 py-3 pr-2 text-left text-sm font-semibold ${groupRail} ${
+          className={`${desktopStickyLabelCell} flex items-center gap-1 border-b border-stone-100 py-3 pr-2 text-left text-sm font-semibold ${groupRail} ${
             saving ? "text-emerald-900 hover:text-emerald-950" : "text-stone-800 hover:text-stone-950"
           }`}
         >
@@ -2207,7 +2226,9 @@ function YearOverview({
 
               return (
               <div className="contents" key={`${categoryId}-${itemId}`}>
-                <div className={`border-b border-stone-100 py-2.5 pr-2 text-sm text-stone-500 ${groupRail}`}>
+                <div
+                  className={`${desktopStickyLabelCell} border-b border-stone-100 py-2.5 pr-2 text-sm text-stone-500 ${groupRail}`}
+                >
                   <div className={`${itemIndent} flex min-w-0 items-center justify-between gap-2`}>
                     <EditableName
                       ariaLabel={`Redigera namnet ${item.name}`}
@@ -2289,7 +2310,9 @@ function YearOverview({
               );
             })}
             <div className="contents">
-              <div className={`border-b border-stone-100 py-2.5 pr-2 ${groupRail}`}>
+              <div
+                className={`${desktopStickyLabelCell} border-b border-stone-100 py-2.5 pr-2 ${groupRail}`}
+              >
                 <button
                   className={`${itemIndent} text-left text-sm font-medium text-stone-500 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-stone-900`}
                   onClick={() => onAddExpense(categoryId)}
@@ -2396,8 +2419,14 @@ function YearOverview({
         })}
       </div>
 
-      <div className="mx-auto hidden max-w-[1560px] sm:grid sm:grid-cols-[168px_96px_repeat(12,minmax(0,1fr))]">
-        <div className="min-h-14 border-b border-stone-200" />
+      <div
+        aria-label="Helårsöversikt, horisontellt rullningsbar vid behov"
+        className="mx-auto hidden max-w-[1560px] overflow-x-auto overscroll-x-contain sm:block"
+        role="region"
+        tabIndex={0}
+      >
+        <div className="grid w-full min-w-[1384px] grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]">
+          <div className={`${desktopStickyLabelCell} z-30 min-h-14 border-b border-stone-200`} />
         <div className="flex min-h-14 flex-col items-center border-b border-stone-200 pb-3 pt-1 text-center text-[11px] font-semibold leading-none text-stone-500">
           <span className="flex h-4 items-center">ÅRET</span>
           <span aria-hidden="true" className="mt-1 h-3 text-[9px]">
@@ -2696,6 +2725,7 @@ function YearOverview({
           months={months}
           selectedMonthId={selectedMonthId}
         />
+        </div>
       </div>
     </section>
   );
