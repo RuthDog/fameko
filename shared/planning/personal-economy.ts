@@ -38,7 +38,7 @@ export function calculateSavingsPreview(
     averageMonthlySavings:
       monthlySavings.length === 0 ? 0 : totalPlannedSavings / monthlySavings.length,
     monthsWithSavings: monthlySavings.filter((amount) => amount > 0).length,
-    savingsRate: totalIncome > 0 ? (totalPlannedSavings / totalIncome) * 100 : null,
+    savingsRate: calculateSavingsRate(totalPlannedSavings, totalIncome),
     totalPlannedSavings,
   };
 }
@@ -61,3 +61,4 @@ export function getSavingsPreviewSummary(
 
   return "Du har ett planerat sparande under året.";
 }
+import { calculateSavingsRate } from "./savings.ts";

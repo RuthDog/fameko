@@ -9,6 +9,13 @@ import {
 } from "../../shared/planning/seed-planning-data.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
 import { type CarPreviewEconomics } from "../../shared/planning/personal-economy.ts";
+import {
+  createSavingsGoal,
+  getSavingsGoals,
+  migrateLegacySavingsStructure,
+  renameSavingsGoal,
+  selectMonthlySavingsMetrics,
+} from "../../shared/planning/savings.ts";
 import { PersonalEconomySection } from "./personal-economy-section.tsx";
 
 type Status = "green" | "yellow" | "red";
@@ -59,6 +66,7 @@ type AmountTarget =
   | { type: "category"; monthId: string; categoryId: string }
   | { type: "item"; monthId: string; categoryId: string; itemId: string };
 type DeleteTarget = Extract<AmountTarget, { type: "item" }> & { itemLabel: string };
+type SavingsGoalView = { id: string; name: string };
 
 type Income = {
   id: string;
@@ -131,6 +139,7 @@ type ForecastMonth = {
   allocations?: Record<AllocationKey, string>;
   areaItemValues?: Record<AreaItemKey, string>;
   incomeLineValues?: Record<IncomeLineKey, string>;
+  savingsGoalValues?: Record<string, string>;
   short: {
     startBalance: string;
     income: string;
@@ -206,14 +215,7 @@ const mortgageRows: { key: AreaItemKey; label: string }[] = [
   { key: "mortgageAmortization", label: "Amortering" },
 ];
 
-const savingsRows: { key: AreaItemKey; label: string }[] = [
-  { key: "savingsBuffer", label: "Buffert" },
-  { key: "savingsVacation", label: "Semester" },
-  { key: "savingsIsk", label: "ISK" },
-  { key: "savingsPension", label: "Pension" },
-];
-
-const areaItemRows = [...mortgageRows, ...savingsRows];
+const areaItemRows = mortgageRows;
 
 const directAllocationCategoryIds = new Set(["mat", "sparande"]);
 const rowNameMaxLength = 48;
@@ -726,6 +728,7 @@ function getDefaultAllocationValue(
 function buildForecastMonths(data: PlanningData): ForecastMonth[] {
   let nextStartBalance = data.openingBalance;
   const sortedCategories = [...data.expenseCategories].sort((first, second) => first.order - second.order);
+  const savingsGoals = getSavingsGoals(data);
 
   return monthMetadata.map((metadata) => {
     const storedIncomeTotal = data.incomes.reduce(
@@ -782,6 +785,12 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
         formatAmount(data.areaItemValues?.[key]?.[metadata.id] ?? 0),
       ]),
     ) as Record<AreaItemKey, string>;
+    const savingsGoalValues = Object.fromEntries(
+      savingsGoals.map((goal) => [
+        goal.id,
+        formatAmount(goal.monthlyValues[metadata.id] ?? 0),
+      ]),
+    );
     const totalAllocated = allocationRows.reduce(
       (total, { key }) => total + parseAmount(allocations[key]),
       0,
@@ -802,6 +811,7 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
       allocations,
       areaItemValues,
       incomeLineValues,
+      savingsGoalValues,
       short: {
         startBalance: shortAmount(formatAmount(nextStartBalance)),
         income: shortAmount(formatAmount(income)),
@@ -1175,7 +1185,7 @@ function readStoredPlanningData() {
     }
 
     const data = JSON.parse(rawData);
-    return isPlanningData(data) ? data : null;
+    return isPlanningData(data) ? migrateLegacySavingsStructure(data) : null;
   } catch {
     return null;
   }
@@ -1252,7 +1262,11 @@ async function parsePlanningYearResponse(response: Response): Promise<CloudPlann
     throw new PlanningApiError("Servern skickade ett ogiltigt svar.", 500);
   }
 
-  return result as CloudPlanningYear;
+  const planningYearResult = result as CloudPlanningYear;
+  return {
+    ...planningYearResult,
+    data: migrateLegacySavingsStructure(planningYearResult.data),
+  };
 }
 
 async function loadCloudPlanningYear(): Promise<CloudPlanningYear | null> {
@@ -1359,6 +1373,14 @@ function updatePlanningLabel(data: PlanningData, target: NameTarget, label: stri
         expenseCategories: { ...labels.expenseCategories, [target.id]: label },
       },
     };
+  }
+
+  if (target.type === "expenseItem") {
+    const renamedSavingsData = renameSavingsGoal(data, target.id, label);
+
+    if (renamedSavingsData !== data) {
+      return renamedSavingsData;
+    }
   }
 
   return {
@@ -1519,13 +1541,31 @@ function getAreaItemYearTotal(months: ForecastMonth[], areaItemKey: AreaItemKey)
   );
 }
 
+function getSavingsGoalAmount(month: ForecastMonth, goalId: string) {
+  return month.savingsGoalValues?.[goalId] ?? "0 kr";
+}
+
+function getSavingsGoalYearTotal(months: ForecastMonth[], goalId: string) {
+  return formatAmount(
+    months.reduce(
+      (total, month) => total + parseAmount(getSavingsGoalAmount(month, goalId)),
+      0,
+    ),
+  );
+}
+
 function getAreaRemainingAmount(month: ForecastMonth, area: "mortgage" | "savings") {
   const allocationKey: AllocationKey = area;
-  const rows = area === "mortgage" ? mortgageRows : savingsRows;
-  const placed = rows.reduce(
-    (total, row) => total + parseAmount(getAreaItemAmount(month, row.key)),
-    0,
-  );
+  const placed =
+    area === "mortgage"
+      ? mortgageRows.reduce(
+          (total, row) => total + parseAmount(getAreaItemAmount(month, row.key)),
+          0,
+        )
+      : Object.values(month.savingsGoalValues ?? {}).reduce(
+          (total, amount) => total + parseAmount(amount),
+          0,
+        );
 
   return formatAmount(parseAmount(getAllocationAmount(month, allocationKey)) - placed);
 }
@@ -1552,14 +1592,17 @@ function getRemainingYearTotal(months: ForecastMonth[]) {
   );
 }
 
-function getSavingsRate(month: ForecastMonth) {
-  const income = parseAmount(month.income);
+function getMonthlySavingsMetrics(month: ForecastMonth) {
+  const amount = getAllocationAmount(month, "savings");
+  const metrics = selectMonthlySavingsMetrics(
+    parseAmount(amount),
+    parseAmount(month.income),
+  );
 
-  if (income === 0) {
-    return null;
-  }
-
-  return (parseAmount(getAllocationAmount(month, "savings")) / income) * 100;
+  return {
+    amount,
+    rate: metrics.savingsRate,
+  };
 }
 
 function formatSavingsRate(rate: number | null) {
@@ -1617,50 +1660,6 @@ function DesktopSectionHeading({ first = false, label }: { first?: boolean; labe
         <span aria-hidden="true" className="h-px min-w-8 flex-1 bg-stone-300/80" />
       </div>
     </>
-  );
-}
-
-function DesktopFutureArea({
-  currentMonthId,
-  currentMonthIndex,
-  months,
-  selectedMonthId,
-}: {
-  currentMonthId: string | null;
-  currentMonthIndex: number;
-  months: ForecastMonth[];
-  selectedMonthId: string;
-}) {
-  return (
-    <div className="contents">
-      <div
-        className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 py-3 pr-2 text-sm text-stone-400`}
-      >
-        <span className="truncate">Investeringar</span>
-      </div>
-      <div className="border-b border-stone-100 bg-stone-50/80 px-1 py-3 text-center text-xs text-stone-400 lg:text-sm">
-        —
-      </div>
-      {months.map((month, monthIndex) => {
-        const background =
-          month.id === currentMonthId
-            ? "bg-[#edf2ec]"
-            : month.id === selectedMonthId
-              ? "bg-stone-950/[0.045]"
-              : currentMonthIndex >= 0 && monthIndex < currentMonthIndex
-                ? "bg-stone-50/70"
-                : "";
-
-        return (
-          <div
-            className={`min-w-0 border-b border-stone-100 px-1 py-3 text-center text-xs text-stone-400 lg:text-sm ${background}`}
-            key={`investments-${month.id}`}
-          >
-            —
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -2106,6 +2105,169 @@ function DesktopAreaItemRow({
   );
 }
 
+function DesktopSavingsGoalRow({
+  editingKey,
+  editingValue,
+  goal,
+  monthCellTone,
+  months,
+  nameEditor,
+  onBeginEdit,
+  onCancelEdit,
+  onChangeEdit,
+  onSelectMonth,
+  onSaveEdit,
+}: {
+  editingKey: string | null;
+  editingValue: string;
+  goal: SavingsGoalView;
+  monthCellTone: (monthId: string, monthIndex: number) => string;
+  months: ForecastMonth[];
+  nameEditor: NameEditor;
+  onBeginEdit: (target: AmountTarget, amount: string) => void;
+  onCancelEdit: () => void;
+  onChangeEdit: (value: string) => void;
+  onSelectMonth: (monthId: string) => void;
+  onSaveEdit: () => void;
+}) {
+  const nameTarget: NameTarget = { type: "expenseItem", id: goal.id };
+
+  return (
+    <div className="contents">
+      <div
+        className={`${desktopStickyLabelCell} flex items-center border-b border-l border-stone-100 border-l-stone-200 py-3 pl-10 pr-2 text-sm text-emerald-900`}
+      >
+        <EditableName
+          ariaLabel={`Redigera namnet ${goal.name}`}
+          cell
+          editing={nameEditor.editingKey === nameKey(nameTarget)}
+          editKey={nameKey(nameTarget)}
+          label={goal.name}
+          onBeginEdit={() => nameEditor.onBeginEdit(nameTarget, goal.name)}
+          onCancel={nameEditor.onCancelEdit}
+          onChange={nameEditor.onChangeEdit}
+          onSave={nameEditor.onSaveEdit}
+          value={nameEditor.editingValue}
+        />
+      </div>
+      <div
+        className="border-b border-stone-100 bg-stone-50/80 px-1 py-3 text-center text-xs font-medium text-emerald-900 lg:text-sm"
+        title={getSavingsGoalYearTotal(months, goal.id)}
+      >
+        {getSavingsGoalYearTotal(months, goal.id).replace(" kr", "")}
+      </div>
+      {months.map((month, monthIndex) => {
+        const target: AmountTarget = {
+          type: "item",
+          monthId: month.id,
+          categoryId: "sparande",
+          itemId: goal.id,
+        };
+        const amount = getSavingsGoalAmount(month, goal.id);
+
+        return (
+          <div
+            className={`grid min-w-0 place-items-center border-b border-stone-100 px-1 py-2 text-xs lg:text-sm ${monthCellTone(
+              month.id,
+              monthIndex,
+            )}`}
+            key={`${goal.id}-${month.id}`}
+          >
+            <EditableAmount
+              amount={amount.replace(" kr", "")}
+              ariaLabel={`Redigera ${goal.name} i ${month.name}, nu ${amount}`}
+              cell
+              editing={editingKey === amountKey(target)}
+              editKey={amountKey(target)}
+              onBeginEdit={() => {
+                onSelectMonth(month.id);
+                onBeginEdit(target, amount);
+              }}
+              onCancel={onCancelEdit}
+              onChange={onChangeEdit}
+              onSave={onSaveEdit}
+              value={editingValue}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DesktopSavingsGoalAddRow({
+  draft,
+  open,
+  onCancel,
+  onChange,
+  onOpen,
+  onSave,
+  months,
+}: {
+  draft: string;
+  open: boolean;
+  onCancel: () => void;
+  onChange: (value: string) => void;
+  onOpen: () => void;
+  onSave: () => void;
+  months: ForecastMonth[];
+}) {
+  return (
+    <div className="contents">
+      <div
+        className={`${desktopStickyLabelCell} border-b border-l border-stone-100 border-l-stone-200 py-2.5 pl-10 pr-2`}
+      >
+        {open ? (
+          <form
+            className="flex min-w-0 items-center gap-1.5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSave();
+            }}
+          >
+            <input
+              aria-label="Namn på nytt sparmål"
+              autoFocus
+              className="min-h-8 min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-2 text-xs text-stone-900 outline-none focus:border-[#9aaa97] focus:ring-2 focus:ring-[#dce4da]"
+              maxLength={48}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder="Nytt sparmål"
+              value={draft}
+            />
+            <button
+              className="min-h-8 rounded-md bg-stone-950 px-2 text-xs font-medium text-white disabled:bg-stone-300"
+              disabled={!draft.trim()}
+              type="submit"
+            >
+              Lägg till
+            </button>
+            <button
+              aria-label="Avbryt nytt sparmål"
+              className="min-h-8 px-1 text-xs text-stone-400 hover:text-stone-700"
+              onClick={onCancel}
+              type="button"
+            >
+              Avbryt
+            </button>
+          </form>
+        ) : (
+          <button
+            className="min-h-8 text-left text-sm font-medium text-emerald-800 transition hover:text-emerald-950"
+            onClick={onOpen}
+            type="button"
+          >
+            + Lägg till sparmål
+          </button>
+        )}
+      </div>
+      <div className="border-b border-stone-100 bg-stone-50/80" />
+      {months.map((month) => (
+        <div className="border-b border-stone-100" key={`add-savings-goal-${month.id}`} />
+      ))}
+    </div>
+  );
+}
+
 function YearOverview({
   editingKey,
   editingValue,
@@ -2116,14 +2278,21 @@ function YearOverview({
   labels,
   months,
   nameEditor,
+  savingsGoalDraft,
+  savingsGoalFormOpen,
+  savingsGoals,
   currentMonthId,
   onAddExpense,
+  onCancelSavingsGoal,
+  onChangeSavingsGoalDraft,
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
   onRequestDelete,
+  onOpenSavingsGoal,
   onSelectMonth,
   onSaveEdit,
+  onSaveSavingsGoal,
   onToggleCostAccount,
   onToggleGridCategory,
   onToggleMortgage,
@@ -2139,14 +2308,21 @@ function YearOverview({
   labels: ResolvedPlanningLabels;
   months: ForecastMonth[];
   nameEditor: NameEditor;
+  savingsGoalDraft: string;
+  savingsGoalFormOpen: boolean;
+  savingsGoals: SavingsGoalView[];
   currentMonthId: string | null;
   onAddExpense: (categoryName: string) => void;
+  onCancelSavingsGoal: () => void;
+  onChangeSavingsGoalDraft: (value: string) => void;
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
   onRequestDelete: (target: DeleteTarget) => void;
+  onOpenSavingsGoal: () => void;
   onSelectMonth: (monthId: string) => void;
   onSaveEdit: () => void;
+  onSaveSavingsGoal: () => void;
   onToggleCostAccount: () => void;
   onToggleGridCategory: (categoryName: string) => void;
   onToggleMortgage: () => void;
@@ -2724,13 +2900,12 @@ function YearOverview({
               values={savingAllocationValues}
               yearTotal={getAllocationYearTotal(months, "savings")}
             />
-            {savingsRows.map((row) => (
-              <DesktopAreaItemRow
-                areaItemKey={row.key}
+            {savingsGoals.map((goal) => (
+              <DesktopSavingsGoalRow
                 editingKey={editingKey}
                 editingValue={editingValue}
-                key={row.key}
-                label={labels.areaItems[row.key]}
+                goal={goal}
+                key={goal.id}
                 monthCellTone={monthCellTone}
                 months={months}
                 nameEditor={nameEditor}
@@ -2739,9 +2914,17 @@ function YearOverview({
                 onChangeEdit={onChangeEdit}
                 onSelectMonth={onSelectMonth}
                 onSaveEdit={onSaveEdit}
-                saving
               />
             ))}
+            <DesktopSavingsGoalAddRow
+              draft={savingsGoalDraft}
+              months={months}
+              onCancel={onCancelSavingsGoal}
+              onChange={onChangeSavingsGoalDraft}
+              onOpen={onOpenSavingsGoal}
+              onSave={onSaveSavingsGoal}
+              open={savingsGoalFormOpen}
+            />
             <DesktopGridRow
               depth={1}
               label="Kvar att placera"
@@ -2756,12 +2939,6 @@ function YearOverview({
           </>
         ) : null}
 
-        <DesktopFutureArea
-          currentMonthId={currentMonthId}
-          currentMonthIndex={currentMonthIndex}
-          months={months}
-          selectedMonthId={selectedMonthId}
-        />
         </div>
       </div>
     </section>
@@ -2985,15 +3162,6 @@ function PlanningSectionHeading({ first = false, label }: { first?: boolean; lab
         {label}
       </h3>
       <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-stone-300/80" />
-    </div>
-  );
-}
-
-function PlanningFutureArea({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-12 items-center justify-between gap-4 border-b border-stone-100 text-sm text-stone-400">
-      <span>{label}</span>
-      <span className="text-xs">Framtida område</span>
     </div>
   );
 }
@@ -3240,6 +3408,133 @@ function MobileAreaItemLine({
         value={editingValue}
       />
     </div>
+  );
+}
+
+function MobileSavingsGoalLine({
+  editingKey,
+  editingValue,
+  goal,
+  month,
+  nameEditor,
+  onBeginEdit,
+  onCancelEdit,
+  onChangeEdit,
+  onSaveEdit,
+}: {
+  editingKey: string | null;
+  editingValue: string;
+  goal: SavingsGoalView;
+  month: ForecastMonth;
+  nameEditor: NameEditor;
+  onBeginEdit: (target: AmountTarget, amount: string) => void;
+  onCancelEdit: () => void;
+  onChangeEdit: (value: string) => void;
+  onSaveEdit: () => void;
+}) {
+  const target: AmountTarget = {
+    type: "item",
+    monthId: month.id,
+    categoryId: "sparande",
+    itemId: goal.id,
+  };
+  const nameTarget: NameTarget = { type: "expenseItem", id: goal.id };
+  const amount = getSavingsGoalAmount(month, goal.id);
+
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 text-sm text-emerald-900">
+      <div className="min-w-0 flex-1">
+        <EditableName
+          ariaLabel={`Redigera namnet ${goal.name}`}
+          editing={nameEditor.editingKey === nameKey(nameTarget)}
+          editKey={nameKey(nameTarget)}
+          label={goal.name}
+          onBeginEdit={() => nameEditor.onBeginEdit(nameTarget, goal.name)}
+          onCancel={nameEditor.onCancelEdit}
+          onChange={nameEditor.onChangeEdit}
+          onSave={nameEditor.onSaveEdit}
+          value={nameEditor.editingValue}
+        />
+      </div>
+      <EditableAmount
+        amount={amount}
+        ariaLabel={`Redigera ${goal.name} i ${month.name}, nu ${amount}`}
+        editing={editingKey === amountKey(target)}
+        editKey={amountKey(target)}
+        onBeginEdit={() => onBeginEdit(target, amount)}
+        onCancel={onCancelEdit}
+        onChange={onChangeEdit}
+        onSave={onSaveEdit}
+        value={editingValue}
+      />
+    </div>
+  );
+}
+
+function MobileSavingsGoalControl({
+  draft,
+  open,
+  onCancel,
+  onChange,
+  onOpen,
+  onSave,
+}: {
+  draft: string;
+  open: boolean;
+  onCancel: () => void;
+  onChange: (value: string) => void;
+  onOpen: () => void;
+  onSave: () => void;
+}) {
+  if (!open) {
+    return (
+      <button
+        className="min-h-11 w-full border-b border-stone-100 text-left text-sm font-medium text-emerald-800"
+        onClick={onOpen}
+        type="button"
+      >
+        + Lägg till sparmål
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="border-b border-stone-100 py-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave();
+      }}
+    >
+      <label className="text-xs font-medium text-stone-500" htmlFor="mobile-savings-goal-name">
+        Namn på sparmål
+      </label>
+      <input
+        autoFocus
+        className="mt-1.5 min-h-10 w-full rounded-lg border border-stone-200 bg-white px-3 text-sm text-stone-900 outline-none focus:border-[#9aaa97] focus:ring-2 focus:ring-[#dce4da]"
+        id="mobile-savings-goal-name"
+        maxLength={48}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Till exempel Japan 2030"
+        value={draft}
+      />
+      <div className="mt-2 flex justify-end gap-2">
+        <button
+          className="min-h-9 px-3 text-sm text-stone-500"
+          onClick={onCancel}
+          type="button"
+        >
+          Avbryt
+        </button>
+        <button
+          className="min-h-9 rounded-lg bg-stone-950 px-3 text-sm font-medium text-white disabled:bg-stone-300"
+          disabled={!draft.trim()}
+          type="submit"
+        >
+          Lägg till
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -3781,13 +4076,14 @@ function ImportPlanningDataDialog({
   );
 }
 
-function MonthlySnapshot({ billAccountLabel, month }: { billAccountLabel: string; month: ForecastMonth }) {
+function MonthlySnapshot({ month }: { month: ForecastMonth }) {
+  const savings = getMonthlySavingsMetrics(month);
   const metrics = [
     { label: "Inkomster", value: month.income },
     { label: "Fördelat", value: month.expenses },
     { label: "Kvar att fördela", value: getRemainingAmount(month) },
-    { label: billAccountLabel, value: getAllocationAmount(month, "billAccount") },
-    { label: "Sparkvot", value: "—" },
+    { label: "Sparande", value: savings.amount },
+    { label: "Sparkvot", value: formatSavingsRate(savings.rate) },
   ];
 
   return (
@@ -3821,8 +4117,8 @@ function MonthlySnapshot({ billAccountLabel, month }: { billAccountLabel: string
 }
 
 function EconomicOverview({ month }: { month: ForecastMonth }) {
-  const savings = getAllocationAmount(month, "savings");
-  const savingsRate = getSavingsRate(month);
+  const savings = getMonthlySavingsMetrics(month);
+  const savingsRate = savings.rate;
   const savingsProgress = savingsRate === null ? 0 : Math.min(Math.max(savingsRate, 0), 100);
   const metrics = [
     { label: "Inkomster", value: month.income, detail: "Efter skatt" },
@@ -3832,7 +4128,7 @@ function EconomicOverview({ month }: { month: ForecastMonth }) {
       value: getRemainingAmount(month),
       detail: "Efter fördelningar",
     },
-    { label: "Sparande", value: savings, detail: "Planerat sparande" },
+    { label: "Sparande", value: savings.amount, detail: "Planerat sparande" },
     {
       label: "Sparkvot",
       value: formatSavingsRate(savingsRate),
@@ -3971,12 +4267,19 @@ function MonthDetail({
   month,
   nameEditor,
   openingBalance,
+  savingsGoalDraft,
+  savingsGoalFormOpen,
+  savingsGoals,
   onAddExpense,
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
   onRequestDelete,
+  onCancelSavingsGoal,
+  onChangeSavingsGoalDraft,
+  onOpenSavingsGoal,
   onSaveEdit,
+  onSaveSavingsGoal,
   onToggleCategory,
   onToggleCostAccount,
   onToggleMortgage,
@@ -3992,12 +4295,19 @@ function MonthDetail({
   month: ForecastMonth;
   nameEditor: NameEditor;
   openingBalance: string;
+  savingsGoalDraft: string;
+  savingsGoalFormOpen: boolean;
+  savingsGoals: SavingsGoalView[];
   onAddExpense: (categoryName: string) => void;
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
   onRequestDelete: (target: DeleteTarget) => void;
+  onCancelSavingsGoal: () => void;
+  onChangeSavingsGoalDraft: (value: string) => void;
+  onOpenSavingsGoal: () => void;
   onSaveEdit: () => void;
+  onSaveSavingsGoal: () => void;
   onToggleCategory: (monthId: string, categoryName: string) => void;
   onToggleCostAccount: () => void;
   onToggleMortgage: () => void;
@@ -4148,22 +4458,28 @@ function MonthDetail({
               saving
             >
               <PlanningLine amount={savingAllocation} label="Tillfört" saving />
-              {savingsRows.map((row) => (
-                <MobileAreaItemLine
-                  areaItemKey={row.key}
+              {savingsGoals.map((goal) => (
+                <MobileSavingsGoalLine
                   editingKey={editingKey}
                   editingValue={editingValue}
-                  key={row.key}
-                  label={labels.areaItems[row.key]}
+                  goal={goal}
+                  key={goal.id}
                   month={month}
                   nameEditor={nameEditor}
                   onBeginEdit={onBeginEdit}
                   onCancelEdit={onCancelEdit}
                   onChangeEdit={onChangeEdit}
                   onSaveEdit={onSaveEdit}
-                  saving
                 />
               ))}
+              <MobileSavingsGoalControl
+                draft={savingsGoalDraft}
+                onCancel={onCancelSavingsGoal}
+                onChange={onChangeSavingsGoalDraft}
+                onOpen={onOpenSavingsGoal}
+                onSave={onSaveSavingsGoal}
+                open={savingsGoalFormOpen}
+              />
               <PlanningLine
                 amount={getAreaRemainingAmount(month, "savings")}
                 label="Kvar att placera"
@@ -4171,8 +4487,6 @@ function MonthDetail({
                 saving
               />
             </PlanningGroup>
-
-            <PlanningFutureArea label="Investeringar" />
           </div>
         </div>
       </div>
@@ -4210,6 +4524,8 @@ export default function Home() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
+  const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
   const [addDraft, setAddDraft] = useState<AddExpenseDraft>({
     categoryId: "bil",
     description: "",
@@ -4319,6 +4635,14 @@ export default function Home() {
 
   const months = useMemo(() => buildForecastMonths(planningData), [planningData]);
   const labels = useMemo(() => getResolvedPlanningLabels(planningData), [planningData]);
+  const savingsGoals = useMemo(
+    () =>
+      getSavingsGoals(planningData).map((goal) => ({
+        id: goal.id,
+        name: planningData.labels?.expenseItems?.[goal.id] ?? goal.name,
+      })),
+    [planningData],
+  );
 
   const selectedMonth =
     months.find((month) => month.id === selectedMonthId) ?? months[0];
@@ -4332,7 +4656,10 @@ export default function Home() {
   const savingsPreview = {
     monthlyIncome: months.map((month) => parseAmount(month.income)),
     monthlySavings: months.map((month) =>
-      parseAmount(getAllocationAmount(month, "savings")),
+      Object.values(month.savingsGoalValues ?? {}).reduce(
+        (total, amount) => total + parseAmount(amount),
+        0,
+      ),
     ),
   };
 
@@ -4622,6 +4949,27 @@ export default function Home() {
     setAddDialogOpen(false);
   }
 
+  function openSavingsGoalForm() {
+    setSavingsGoalDraft("");
+    setSavingsGoalFormOpen(true);
+  }
+
+  function cancelSavingsGoalForm() {
+    setSavingsGoalDraft("");
+    setSavingsGoalFormOpen(false);
+  }
+
+  function saveSavingsGoal() {
+    if (!savingsGoalDraft.trim()) {
+      return;
+    }
+
+    setPlanningData((currentData) => createSavingsGoal(currentData, savingsGoalDraft));
+    setExpandedSavings(true);
+    setSavingsGoalDraft("");
+    setSavingsGoalFormOpen(false);
+  }
+
   function resetSeedData() {
     setPlanningData(seedPlanningData);
     savePlanningData(seedPlanningData);
@@ -4637,6 +4985,8 @@ export default function Home() {
     setPendingDelete(null);
     setScopeDialogOpen(false);
     setAddDialogOpen(false);
+    setSavingsGoalDraft("");
+    setSavingsGoalFormOpen(false);
   }
 
   const nameEditor: NameEditor = {
@@ -4770,10 +5120,7 @@ export default function Home() {
             </div>
 
             <div className="w-full translate-y-3 self-center lg:max-w-[560px] lg:justify-self-end">
-              <MonthlySnapshot
-                billAccountLabel={labels.allocations.billAccount}
-                month={currentMonth}
-              />
+              <MonthlySnapshot month={currentMonth} />
             </div>
           </div>
         </div>
@@ -4794,13 +5141,20 @@ export default function Home() {
         labels={labels}
         months={months}
         nameEditor={nameEditor}
+        savingsGoalDraft={savingsGoalDraft}
+        savingsGoalFormOpen={savingsGoalFormOpen}
+        savingsGoals={savingsGoals}
         onAddExpense={openAddDialog}
         onBeginEdit={beginEdit}
         onCancelEdit={cancelEdit}
         onChangeEdit={setEditingValue}
         onRequestDelete={requestDelete}
+        onCancelSavingsGoal={cancelSavingsGoalForm}
+        onChangeSavingsGoalDraft={setSavingsGoalDraft}
+        onOpenSavingsGoal={openSavingsGoalForm}
         onSelectMonth={selectMonth}
         onSaveEdit={saveEdit}
+        onSaveSavingsGoal={saveSavingsGoal}
         onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
         onToggleGridCategory={toggleGridCategory}
         onToggleMortgage={() => setExpandedMortgage((current) => !current)}
@@ -4820,12 +5174,19 @@ export default function Home() {
           month={selectedMonth}
           nameEditor={nameEditor}
           openingBalance={months[0].startBalance}
+          savingsGoalDraft={savingsGoalDraft}
+          savingsGoalFormOpen={savingsGoalFormOpen}
+          savingsGoals={savingsGoals}
           onAddExpense={openAddDialog}
           onBeginEdit={beginEdit}
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
           onRequestDelete={requestDelete}
+          onCancelSavingsGoal={cancelSavingsGoalForm}
+          onChangeSavingsGoalDraft={setSavingsGoalDraft}
+          onOpenSavingsGoal={openSavingsGoalForm}
           onSaveEdit={saveEdit}
+          onSaveSavingsGoal={saveSavingsGoal}
           onToggleCategory={toggleCategory}
           onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
           onToggleMortgage={() => setExpandedMortgage((current) => !current)}

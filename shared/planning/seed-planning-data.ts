@@ -160,9 +160,9 @@ export const seedPlanningDataV3 = {
       recurring: true,
     },
     {
-      id: "sparande-sparande",
+      id: "sparmal-buffert",
       category: "sparande",
-      name: "Sparande",
+      name: "Buffert",
       monthlyValues: monthlyValues([
         5_000,
         6_000,
@@ -177,6 +177,20 @@ export const seedPlanningDataV3 = {
         6_000,
         3_000,
       ]),
+      recurring: true,
+    },
+    {
+      id: "sparmal-pension",
+      category: "sparande",
+      name: "Pension",
+      monthlyValues: monthlyValues(0),
+      recurring: true,
+    },
+    {
+      id: "sparmal-investeringar",
+      category: "sparande",
+      name: "Investeringar",
+      monthlyValues: monthlyValues(0),
       recurring: true,
     },
     {
