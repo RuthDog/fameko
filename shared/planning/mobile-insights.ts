@@ -7,7 +7,12 @@ export type MobileInsightFrequency =
   | "yearly";
 
 export type MobileInsightsPlanningSource = {
+  expenseCategories?: Array<{
+    id: string;
+    name: string;
+  }>;
   expenseItems: Array<{
+    category?: string;
     frequency?: MobileInsightFrequency;
     id: string;
     monthlyValues: Record<string, number>;
@@ -15,6 +20,7 @@ export type MobileInsightsPlanningSource = {
     recurring: boolean;
   }>;
   labels?: {
+    expenseCategories?: Record<string, string>;
     expenseItems?: Record<string, string>;
   };
 };
@@ -30,7 +36,7 @@ export type MobileInsightMonthSource = {
 export type MobileInsightEvent = {
   detail?: string;
   id: string;
-  kind: "annual" | "ending" | "negative" | "new" | "oneOff" | "stable" | "unusual";
+  kind: "annual" | "ending" | "negative" | "new" | "planned" | "unusual";
   title: string;
 };
 
@@ -42,19 +48,34 @@ export type MobileUpcomingInsight = {
   remaining: number;
 };
 
+type RankedInsightEvent = MobileInsightEvent & {
+  itemIds?: string[];
+  sortAmount: number;
+};
+
+type PlannedCost = {
+  amount: number;
+  id: string;
+  itemIds: string[];
+  label: string;
+};
+
 const currencyFormatter = new Intl.NumberFormat("sv-SE", {
   maximumFractionDigits: 0,
 });
 
 const eventPriority: Record<MobileInsightEvent["kind"], number> = {
-  negative: 0,
-  annual: 1,
-  oneOff: 2,
-  new: 3,
+  new: 0,
+  ending: 1,
+  annual: 2,
+  negative: 3,
   unusual: 4,
-  ending: 5,
-  stable: 6,
+  planned: 5,
 };
+
+const minimumInsightCount = 3;
+const defaultPlannedCostCount = 4;
+const maximumInsightCount = 5;
 
 function formatCurrency(value: number) {
   return `${currencyFormatter.format(Math.round(value))} kr`;
@@ -67,23 +88,60 @@ function average(values: number[]) {
 }
 
 function headlineForEvents(events: MobileInsightEvent[]) {
-  if (events.some((event) => event.kind === "negative")) {
-    return "Behöver uppmärksamhet";
+  return events.some((event) => event.kind === "negative")
+    ? "Behöver uppmärksamhet"
+    : "Det viktigaste att känna till";
+}
+
+function getPlannedCosts(
+  monthId: string,
+  planningData: MobileInsightsPlanningSource,
+): PlannedCost[] {
+  const categoryLabels = new Map(
+    (planningData.expenseCategories ?? []).map((category) => [
+      category.id,
+      planningData.labels?.expenseCategories?.[category.id] ?? category.name,
+    ]),
+  );
+  const groupedCosts = new Map<string, PlannedCost>();
+
+  for (const item of planningData.expenseItems) {
+    const amount = item.monthlyValues[monthId] ?? 0;
+
+    if (amount <= 0 || item.category === "sparande") {
+      continue;
+    }
+
+    const categoryLabel = item.category ? categoryLabels.get(item.category) : undefined;
+    const groupId = categoryLabel && item.category ? `category-${item.category}` : `item-${item.id}`;
+    const label = categoryLabel ?? planningData.labels?.expenseItems?.[item.id] ?? item.name;
+    const existingCost = groupedCosts.get(groupId);
+
+    if (existingCost) {
+      existingCost.amount += amount;
+      existingCost.itemIds.push(item.id);
+    } else {
+      groupedCosts.set(groupId, {
+        amount,
+        id: groupId,
+        itemIds: [item.id],
+        label,
+      });
+    }
   }
 
-  if (events.some((event) => ["annual", "oneOff", "unusual"].includes(event.kind))) {
-    return "Extra kostnader";
-  }
+  return [...groupedCosts.values()].sort(
+    (first, second) => second.amount - first.amount || first.label.localeCompare(second.label, "sv"),
+  );
+}
 
-  if (events.some((event) => event.kind === "new")) {
-    return "Nytt denna månad";
-  }
-
-  if (events.some((event) => event.kind === "ending")) {
-    return "Förändringar";
-  }
-
-  return "Stabil månad";
+function toPublicEvent(event: RankedInsightEvent): MobileInsightEvent {
+  return {
+    detail: event.detail,
+    id: event.id,
+    kind: event.kind,
+    title: event.title,
+  };
 }
 
 export function buildMobileUpcomingInsights({
@@ -107,17 +165,7 @@ export function buildMobileUpcomingInsights({
 
   return months.slice(currentMonthIndex + 1, currentMonthIndex + 4).map((month) => {
     const monthIndex = monthIds.indexOf(month.id);
-    const events: MobileInsightEvent[] = [];
-
-    if (month.remaining < 0) {
-      events.push({
-        id: `${month.id}-negative`,
-        kind: "negative",
-        title: `Månaden går ${formatCurrency(Math.abs(month.remaining))} back.`,
-      });
-    }
-
-    const largeOneOffThreshold = Math.max(5_000, month.income * 0.08);
+    const events: RankedInsightEvent[] = [];
 
     for (const item of planningData.expenseItems) {
       const amount = item.monthlyValues[month.id] ?? 0;
@@ -134,37 +182,26 @@ export function buildMobileUpcomingInsights({
         .map((monthId) => item.monthlyValues[monthId] ?? 0)
         .filter((value) => value > 0);
       const label = planningData.labels?.expenseItems?.[item.id] ?? item.name;
-      let primaryEventAdded = false;
-
-      if (item.frequency === "yearly" && amount > 0) {
-        events.push({
-          detail: "Kontrollera gärna om priset fortfarande är bra.",
-          id: `${month.id}-${item.id}-annual`,
-          kind: "annual",
-          title: `${label} förfaller den här månaden.`,
-        });
-        primaryEventAdded = true;
-      } else if (
-        amount >= largeOneOffThreshold &&
-        (item.frequency === "once" || !item.recurring)
-      ) {
-        events.push({
-          id: `${month.id}-${item.id}-one-off`,
-          kind: "oneOff",
-          title: `${label}: ${formatCurrency(amount)} i en engångskostnad.`,
-        });
-        primaryEventAdded = true;
-      } else if (
+      const futureStartsLikeMonthlyCost =
+        item.frequency === undefined &&
+        item.recurring &&
+        futureAmounts.slice(0, 2).length === 2 &&
+        futureAmounts.slice(0, 2).every((value) => value > 0);
+      const isNewCost =
         amount >= 500 &&
         priorAmounts.every((value) => value === 0) &&
-        (item.frequency === "monthly" || futureAmounts.slice(0, 2).every((value) => value > 0))
-      ) {
+        (item.frequency === "monthly" || futureStartsLikeMonthlyCost);
+
+      if (isNewCost) {
         events.push({
+          detail: `${formatCurrency(amount)}/mån`,
           id: `${month.id}-${item.id}-new`,
+          itemIds: [item.id],
           kind: "new",
-          title: `${label} börjar den här månaden.`,
+          sortAmount: amount,
+          title: `${label} börjar.`,
         });
-        primaryEventAdded = true;
+        continue;
       }
 
       const recentPriorAmounts = monthIds
@@ -181,27 +218,72 @@ export function buildMobileUpcomingInsights({
         futureAmounts.every((value) => value === 0)
       ) {
         events.push({
+          detail: `${formatCurrency(previousAmount)}/mån försvinner ur planeringen.`,
           id: `${month.id}-${item.id}-ending`,
+          itemIds: [item.id],
           kind: "ending",
-          title: `${label} finns inte längre med.`,
+          sortAmount: previousAmount,
+          title: `${label} avslutas.`,
         });
+        continue;
+      }
+
+      if (item.frequency === "yearly" && amount > 0) {
+        events.push({
+          detail: `${formatCurrency(amount)} · Dags att se över priset.`,
+          id: `${month.id}-${item.id}-annual`,
+          itemIds: [item.id],
+          kind: "annual",
+          sortAmount: amount,
+          title: `${label} betalas den här månaden.`,
+        });
+        continue;
+      }
+
+      const largeOneOffThreshold = Math.max(5_000, month.income * 0.08);
+
+      if (
+        amount >= largeOneOffThreshold &&
+        (item.frequency === "once" || !item.recurring)
+      ) {
+        events.push({
+          detail: formatCurrency(amount),
+          id: `${month.id}-${item.id}-one-off`,
+          itemIds: [item.id],
+          kind: "unusual",
+          sortAmount: amount,
+          title: `${label} är en större engångskostnad.`,
+        });
+        continue;
       }
 
       const normalActiveAmount = average(otherPositiveAmounts);
 
       if (
-        !primaryEventAdded &&
         amount > 0 &&
         normalActiveAmount > 0 &&
         amount >= normalActiveAmount * 1.5 &&
         amount - normalActiveAmount >= 1_000
       ) {
         events.push({
+          detail: formatCurrency(amount),
           id: `${month.id}-${item.id}-unusual`,
+          itemIds: [item.id],
           kind: "unusual",
-          title: `${label} är ovanligt hög: ${formatCurrency(amount)}.`,
+          sortAmount: amount - normalActiveAmount,
+          title: `${label} är ovanligt hög.`,
         });
       }
+    }
+
+    if (month.remaining < 0) {
+      events.push({
+        detail: `${formatCurrency(Math.abs(month.remaining))} saknas för att månaden ska gå ihop.`,
+        id: `${month.id}-negative`,
+        kind: "negative",
+        sortAmount: Math.abs(month.remaining),
+        title: "Månaden går back.",
+      });
     }
 
     if (
@@ -210,24 +292,60 @@ export function buildMobileUpcomingInsights({
       month.costTotal - averageMonthlyCost >= 5_000
     ) {
       events.push({
+        detail: `${formatCurrency(month.costTotal)} · ${formatCurrency(
+          month.costTotal - averageMonthlyCost,
+        )} över månadssnittet.`,
         id: `${month.id}-unusual-total`,
         kind: "unusual",
-        title: `Planerade kostnader är ${formatCurrency(month.costTotal - averageMonthlyCost)} över månadssnittet.`,
+        sortAmount: month.costTotal - averageMonthlyCost,
+        title: "Månadens planerade kostnader är ovanligt höga.",
       });
     }
 
-    const notableEvents = events
-      .sort((first, second) => eventPriority[first.kind] - eventPriority[second.kind])
-      .slice(0, 3);
-    const displayedEvents = notableEvents.length
-      ? notableEvents
-      : [
-          {
-            id: `${month.id}-stable`,
-            kind: "stable" as const,
-            title: "Inga större förändringar i planeringen.",
-          },
-        ];
+    const rankedEvents = events.sort(
+      (first, second) =>
+        eventPriority[first.kind] - eventPriority[second.kind] ||
+        second.sortAmount - first.sortAmount ||
+        first.title.localeCompare(second.title, "sv"),
+    );
+    const targetCount =
+      rankedEvents.length === 0
+        ? defaultPlannedCostCount
+        : Math.min(maximumInsightCount, Math.max(minimumInsightCount, rankedEvents.length));
+    const selectedEvents = rankedEvents.slice(0, maximumInsightCount);
+    const representedItemIds = new Set(selectedEvents.flatMap((event) => event.itemIds ?? []));
+
+    for (const plannedCost of getPlannedCosts(month.id, planningData)) {
+      if (selectedEvents.length >= targetCount) {
+        break;
+      }
+
+      if (plannedCost.itemIds.some((itemId) => representedItemIds.has(itemId))) {
+        continue;
+      }
+
+      selectedEvents.push({
+        detail: formatCurrency(plannedCost.amount),
+        id: `${month.id}-${plannedCost.id}-planned`,
+        itemIds: plannedCost.itemIds,
+        kind: "planned",
+        sortAmount: plannedCost.amount,
+        title: plannedCost.label,
+      });
+      plannedCost.itemIds.forEach((itemId) => representedItemIds.add(itemId));
+    }
+
+    if (selectedEvents.length === 0) {
+      selectedEvents.push({
+        detail: "Kontrollera att månadens planering är komplett.",
+        id: `${month.id}-empty-plan`,
+        kind: "planned",
+        sortAmount: 0,
+        title: "Inga kostnader är planerade den här månaden.",
+      });
+    }
+
+    const displayedEvents = selectedEvents.map(toPublicEvent);
 
     return {
       events: displayedEvents,

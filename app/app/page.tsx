@@ -4309,7 +4309,9 @@ function MobileUpcomingInsights({ insights }: { insights: MobileUpcomingInsight[
                   {insight.name}
                 </h3>
                 <div className="shrink-0 text-right">
-                  <p className={`${mobileTypography.metadata} text-stone-400`}>Kvar</p>
+                  <p className={`${mobileTypography.metadata} text-stone-400`}>
+                    Kvar att fördela
+                  </p>
                   <p
                     className={`${mobileTypography.item} tabular-nums ${
                       insight.remaining < 0 ? "text-rose-700" : "text-stone-900"
@@ -4325,12 +4327,16 @@ function MobileUpcomingInsights({ insights }: { insights: MobileUpcomingInsight[
               <ul className="mt-2 space-y-3">
                 {insight.events.map((event) => (
                   <li className="flex gap-2.5" key={event.id}>
-                    <span
-                      aria-hidden="true"
-                      className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                        event.kind === "negative" ? "bg-rose-500" : "bg-[#899986]"
-                      }`}
-                    />
+                    {event.kind === "new" || event.kind === "negative" ? (
+                      <span aria-hidden="true" className="mt-0.5 w-4 shrink-0 text-center text-xs">
+                        {event.kind === "new" ? "🆕" : "⚠"}
+                      </span>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#899986]"
+                      />
+                    )}
                     <div className="min-w-0">
                       <p className={`${mobileTypography.item} text-stone-700`}>{event.title}</p>
                       {event.detail ? (
@@ -4887,6 +4893,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={month.expenses}
           expanded={expandedSection === "allocations"}
           id="allocations"
+          illustrationSrc="/images/mobile-insights/allocations.png"
           label="Fördelningar"
           onToggle={() => toggleSection("allocations")}
         >
@@ -4953,6 +4960,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={mortgageAllocation}
           expanded={expandedSection === "mortgage"}
           id="mortgage"
+          illustrationSrc="/images/mobile-insights/mortgage.png"
           label={labels.allocations.mortgage}
           onToggle={() => toggleSection("mortgage")}
         >
