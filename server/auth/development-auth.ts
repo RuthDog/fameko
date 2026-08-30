@@ -1,6 +1,6 @@
 import type { AuthorizedPilotContext } from "../identity/identity-types.ts";
 
-const localDevelopmentHostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const loopbackDevelopmentHostnames = new Set(["localhost", "127.0.0.1", "::1"]);
 const stableTimestamp = "1970-01-01T00:00:00.000Z";
 
 export const localDevelopmentAuthContext: AuthorizedPilotContext = {
@@ -34,16 +34,79 @@ export const localDevelopmentAuthContext: AuthorizedPilotContext = {
   },
 };
 
-function isLocalDevelopmentHostname(hostname: string): boolean {
-  return localDevelopmentHostnames.has(hostname.toLowerCase());
+function normalizeHostname(hostname: string): string {
+  const normalized = hostname.toLowerCase();
+
+  return normalized.startsWith("[") && normalized.endsWith("]")
+    ? normalized.slice(1, -1)
+    : normalized;
+}
+
+function parseCanonicalIpv4(hostname: string): [number, number, number, number] | null {
+  const parts = hostname.split(".");
+
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !/^(0|[1-9]\d{0,2})$/.test(part))
+  ) {
+    return null;
+  }
+
+  const octets = parts.map(Number);
+
+  return octets.every((octet) => octet <= 255)
+    ? (octets as [number, number, number, number])
+    : null;
+}
+
+function isDevelopmentBypassHostname(hostname: string): boolean {
+  const normalized = normalizeHostname(hostname);
+
+  if (loopbackDevelopmentHostnames.has(normalized)) {
+    return true;
+  }
+
+  const octets = parseCanonicalIpv4(normalized);
+
+  if (!octets) {
+    return false;
+  }
+
+  const [first, second] = octets;
+
+  return (
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function isValidPort(port: string | undefined): boolean {
+  if (port === undefined) {
+    return true;
+  }
+
+  return /^\d{1,5}$/.test(port) && Number(port) <= 65_535;
 }
 
 function hostnameFromHostHeader(host: string): string | null {
-  try {
-    return new URL(`http://${host}`).hostname;
-  } catch {
+  if (!host || host !== host.trim()) {
     return null;
   }
+
+  const bracketedIpv6 = host.match(/^\[([^\]]+)\](?::(\d+))?$/);
+
+  if (bracketedIpv6) {
+    return isValidPort(bracketedIpv6[2]) ? bracketedIpv6[1] : null;
+  }
+
+  const hostnameWithOptionalPort = host.match(/^([^:]+)(?::(\d+))?$/);
+
+  if (!hostnameWithOptionalPort || !isValidPort(hostnameWithOptionalPort[2])) {
+    return null;
+  }
+
+  return hostnameWithOptionalPort[1];
 }
 
 export function isLocalDevelopmentRequest(
@@ -62,11 +125,15 @@ export function isLocalDevelopmentRequest(
   try {
     const requestUrl = new URL(request.url);
     const headerHostname = hostnameFromHostHeader(hostHeader);
+    const requestHostname = normalizeHostname(requestUrl.hostname);
+    const normalizedHeaderHostname = headerHostname
+      ? normalizeHostname(headerHostname)
+      : null;
 
     return (
-      headerHostname !== null &&
-      isLocalDevelopmentHostname(requestUrl.hostname) &&
-      isLocalDevelopmentHostname(headerHostname)
+      normalizedHeaderHostname !== null &&
+      isDevelopmentBypassHostname(requestHostname) &&
+      isDevelopmentBypassHostname(normalizedHeaderHostname)
     );
   } catch {
     return false;

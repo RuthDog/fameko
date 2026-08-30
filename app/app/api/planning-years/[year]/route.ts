@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 
 import { getFamekoDatabase } from "../../../../../server/cloudflare/database.ts";
 import {
-  isSameOriginJsonRequest,
   requirePlanningAuthorization,
 } from "../../../../../server/planning/planning-http.ts";
+import { isSameOriginJsonRequest } from "../../../../../server/planning/same-origin-json.ts";
 import {
   getDevelopmentPlanningYear,
   saveDevelopmentPlanningYear,
@@ -82,7 +82,7 @@ export async function PUT(request: Request, routeContext: RouteContext) {
     return authorization.response;
   }
 
-  if (!isSameOriginJsonRequest(request)) {
+  if (!isSameOriginJsonRequest(request, authorization.mode)) {
     return NextResponse.json({ message: "Begäran kunde inte godkännas." }, { status: 403 });
   }
 

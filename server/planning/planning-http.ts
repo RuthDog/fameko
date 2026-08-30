@@ -29,18 +29,3 @@ export async function requirePlanningAuthorization(request: Request) {
 
   return { context: authorization.context, mode: authorization.mode };
 }
-
-export function isSameOriginJsonRequest(request: Request): boolean {
-  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
-  const origin = request.headers.get("origin");
-
-  if (!contentType.startsWith("application/json") || !origin) {
-    return false;
-  }
-
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
-}

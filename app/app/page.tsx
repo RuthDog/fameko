@@ -16,6 +16,11 @@ import {
   renameSavingsGoal,
   selectMonthlySavingsMetrics,
 } from "../../shared/planning/savings.ts";
+import {
+  buildMobileUpcomingInsights,
+  type MobileUpcomingInsight,
+} from "../../shared/planning/mobile-insights.ts";
+import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 import { PersonalEconomySection } from "./personal-economy-section.tsx";
 
 type Status = "green" | "yellow" | "red";
@@ -147,6 +152,15 @@ type ForecastMonth = {
     calculatedBalance: string;
   };
   categories: ForecastExpenseCategory[];
+};
+
+type LargestCost = {
+  amount: string;
+  icon: string;
+  id: string;
+  insight: string;
+  name: string;
+  percentage: number;
 };
 
 type YearRow = {
@@ -1467,6 +1481,47 @@ function getCategoryYearTotal(months: ForecastMonth[], categoryId: string) {
   );
 }
 
+function getLargestCosts(months: ForecastMonth[]): LargestCost[] {
+  const categoryIcons: Record<string, string> = {
+    bil: "🚗",
+    boende: "🏠",
+    forsakringar: "🛡️",
+    husdjur: "🐾",
+    mat: "🍽️",
+    streaming: "📺",
+    ovrigt: "•••",
+  };
+  const categories = (months[0]?.categories ?? [])
+    .filter((category) => category.id && category.id !== "sparande")
+    .map((category) => ({
+      id: category.id!,
+      name: category.name,
+      total: parseAmount(getCategoryYearTotal(months, category.id!)),
+    }))
+    .filter((category) => category.total > 0);
+  const totalCosts = categories.reduce((total, category) => total + category.total, 0);
+
+  return categories
+    .sort((first, second) => second.total - first.total)
+    .slice(0, 3)
+    .map((category, index) => {
+      const percentage =
+        totalCosts > 0 ? Math.round((category.total / totalCosts) * 100) : 0;
+
+      return {
+        amount: formatAmount(category.total),
+        icon: categoryIcons[category.id] ?? "•",
+        id: category.id,
+        insight:
+          index === 0
+            ? `${category.name} är den största kostnaden och står för ${percentage} % av årets planerade kostnader.`
+            : `${category.name} står för ${percentage} % av årets planerade kostnader.`,
+        name: category.name,
+        percentage,
+      };
+    });
+}
+
 function getItemYearTotal(months: ForecastMonth[], categoryId: string, itemId: string) {
   return formatAmount(
     months.reduce((total, month) => {
@@ -2553,32 +2608,32 @@ function YearOverview({
       aria-label="Ekonomisk plan för kommande 12 månader"
       className="border-y border-stone-200 bg-white/82 px-3 py-5 shadow-[0_18px_64px_rgba(28,25,23,0.045)] backdrop-blur sm:px-5 lg:px-7"
     >
-      <div className="mx-auto grid max-w-[1560px] grid-cols-[60px_repeat(3,minmax(0,1fr))] sm:hidden">
+      <div className="mx-auto grid max-w-[1560px] grid-cols-[56px_repeat(3,minmax(0,1fr))] lg:hidden">
         <div className="border-b border-stone-200 pb-3" />
         {yearRows.map((row) => (
           <div
-            className="border-b border-stone-200 pb-3 text-center text-[11px] font-medium text-stone-500"
+            className={`border-b border-stone-200 pb-3 text-center ${mobileTypography.metadata} text-stone-500`}
             key={row.key}
           >
             {row.shortLabel}
           </div>
         ))}
 
-        <div className="flex items-center border-b border-stone-200 py-3 text-[11px] font-semibold leading-none text-stone-500">
-          ÅRET
+        <div className={`flex items-center border-b border-stone-200 py-3 ${mobileTypography.metadata} text-stone-500`}>
+          Året
         </div>
         {yearRows.map((row) => {
           const summary = getYearSummary(row, months);
 
           return (
             <div
-              className={`border-b border-stone-200 bg-stone-50/80 px-1 py-3 text-center text-[11px] text-stone-800 ${
+              className={`border-b border-stone-200 bg-stone-50/80 px-1 py-3 text-center ${mobileTypography.metadata} text-stone-800 ${
                 row.key === "remaining" ? "font-semibold" : "font-medium"
               }`}
               key={`year-${row.key}`}
               title={summary}
             >
-              {shortAmount(summary)}
+              {summary}
             </div>
           );
         })}
@@ -2592,7 +2647,7 @@ function YearOverview({
             <div className="contents" key={month.id}>
               <button
                 aria-pressed={selected}
-                className={`flex items-center gap-1.5 border-b border-stone-100 py-3 text-left text-[11px] font-semibold leading-none transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
+                className={`flex items-center gap-1.5 border-b border-stone-100 py-3 text-left ${mobileTypography.metadata} transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
                   current
                     ? "border-l-2 border-l-emerald-700 pl-1 text-stone-950"
                     : selected
@@ -2617,13 +2672,13 @@ function YearOverview({
                 return (
                   <button
                     aria-label={`${month.name}, ${row.label}: ${getMonthFlowValue(month, row.key)}`}
-                    className={`border-b border-stone-100 px-1 py-3 text-center text-[11px] transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${cellClass}`}
+                    className={`border-b border-stone-100 px-1 py-3 text-center ${mobileTypography.metadata} transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${cellClass}`}
                     key={`${month.id}-${row.key}`}
                     onClick={() => onSelectMonth(month.id)}
                     tabIndex={-1}
                     type="button"
                   >
-                    {shortAmount(getMonthFlowValue(month, row.key))}
+                    {getMonthFlowValue(month, row.key)}
                   </button>
                 );
               })}
@@ -2634,7 +2689,7 @@ function YearOverview({
 
       <div
         aria-label="Helårsöversikt, horisontellt rullningsbar vid behov"
-        className="mx-auto hidden max-w-[1560px] overflow-x-auto overscroll-x-contain sm:block"
+        className="mx-auto hidden max-w-[1560px] overflow-x-auto overscroll-x-contain lg:block"
         role="region"
         tabIndex={0}
       >
@@ -2948,8 +3003,8 @@ function YearOverview({
 function DetailMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-b border-stone-100 py-4 sm:border-b-0 sm:py-0">
-      <p className="text-xs text-stone-400">{label}</p>
-      <p className="mt-1 text-base font-medium text-stone-950">{value}</p>
+      <p className={`${mobileTypography.metadata} text-stone-400`}>{label}</p>
+      <p className={`mt-1 ${mobileTypography.sectionTitle} tabular-nums text-stone-950`}>{value}</p>
     </div>
   );
 }
@@ -3088,6 +3143,19 @@ function EditableName({
   );
 }
 
+function MobileDisclosureChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid h-6 w-5 shrink-0 place-items-center text-lg leading-none text-stone-400 transition-transform duration-200 ease-out ${
+        expanded ? "rotate-90" : ""
+      }`}
+    >
+      ›
+    </span>
+  );
+}
+
 function PlanningGroup({
   amount,
   children,
@@ -3107,29 +3175,22 @@ function PlanningGroup({
     <div className="border-b border-stone-100">
       <button
         aria-expanded={expanded}
-        className={`flex min-h-12 w-full items-center justify-between gap-4 text-left font-medium ${
+        className={`flex ${mobileRhythm.disclosureButton} w-full items-center justify-between gap-4 text-left ${mobileTypography.sectionTitle} ${
           saving ? "text-emerald-900" : "text-stone-950"
         }`}
         onClick={onToggle}
         type="button"
       >
-        <span className="flex min-w-0 items-center gap-3">
-          <span
-            aria-hidden="true"
-            className={`grid h-6 w-6 shrink-0 place-items-center text-lg leading-none text-stone-400 transition-transform ${
-              expanded ? "rotate-90" : ""
-            }`}
-          >
-            ›
-          </span>
+        <span className="flex min-w-0 items-center gap-2.5">
+          <MobileDisclosureChevron expanded={expanded} />
           <span className="truncate" title={label}>{label}</span>
         </span>
-        <span className={`shrink-0 text-sm tabular-nums ${saving ? "text-emerald-900" : "text-stone-600"}`}>
+        <span className={`shrink-0 ${mobileTypography.item} tabular-nums ${saving ? "text-emerald-900" : "text-stone-600"}`}>
           {amount}
         </span>
       </button>
       {expanded && children ? (
-        <div className="mb-3 ml-3 border-l border-stone-200 pl-4">{children}</div>
+        <div className={mobileRhythm.disclosureContent}>{children}</div>
       ) : null}
     </div>
   );
@@ -3146,19 +3207,19 @@ function PlanningPrimaryGroup({
 }) {
   return (
     <section aria-label={label} className="border-b border-stone-200">
-      <div className="flex min-h-12 items-center justify-between gap-4 border-b border-stone-100 font-medium text-stone-950">
-        <h4>{label}</h4>
-        <span className="shrink-0 text-sm tabular-nums text-stone-600">{amount}</span>
+      <div className={`flex ${mobileRhythm.disclosureButton} items-center justify-between gap-4 border-b border-stone-100 text-stone-950`}>
+        <h4 className={mobileTypography.sectionTitle}>{label}</h4>
+        <span className={`shrink-0 ${mobileTypography.item} tabular-nums text-stone-600`}>{amount}</span>
       </div>
-      <div className="pl-4">{children}</div>
+      <div className={mobileRhythm.disclosureContent}>{children}</div>
     </section>
   );
 }
 
 function PlanningSectionHeading({ first = false, label }: { first?: boolean; label: string }) {
   return (
-    <div className={`flex items-center gap-3 pb-3 ${first ? "" : "pt-10"}`}>
-      <h3 className="shrink-0 text-xs font-semibold uppercase leading-none tracking-[0.08em] text-stone-700">
+    <div className={`flex items-center gap-3 pb-4 ${first ? "" : "pt-10"}`}>
+      <h3 className={`shrink-0 ${mobileTypography.sectionTitle} text-stone-800`}>
         {label}
       </h3>
       <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-stone-300/80" />
@@ -3182,8 +3243,8 @@ function PlanningLine({
   return (
     <div
       className={`flex min-h-10 items-center justify-between gap-4 border-b border-stone-100 ${
-        result ? "min-h-11 border-y border-stone-200 text-[13px] font-medium" : "text-sm"
-      } ${muted ? "text-stone-400" : saving ? (result ? "text-emerald-800" : "text-emerald-900") : result ? "text-stone-700" : "text-stone-600"}`}
+        result ? "min-h-11 border-y border-stone-200" : ""
+      } ${mobileTypography.metadata} ${muted ? "text-stone-400" : saving ? (result ? "text-emerald-800" : "text-emerald-900") : result ? "text-stone-700" : "text-stone-600"}`}
     >
       <span className="truncate">{label}</span>
       <span className="shrink-0 tabular-nums">{amount}</span>
@@ -3211,7 +3272,7 @@ function MobileOpeningBalance({
   const target: AmountTarget = { type: "openingBalance" };
 
   return (
-    <div className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 text-sm text-stone-600">
+    <div className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.metadata} text-stone-600`}>
       <span className="truncate">Årets startsaldo</span>
       <EditableAmount
         amount={amount}
@@ -3256,7 +3317,7 @@ function MobileIncomeLine({
   const amount = getIncomeLineAmount(month, incomeLineKey);
 
   return (
-    <div className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 text-sm text-stone-600">
+    <div className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.item} text-stone-600`}>
       <div className="min-w-0 flex-1">
         <EditableName
           ariaLabel={`Redigera namnet ${label}`}
@@ -3316,7 +3377,7 @@ function MobileAllocationLine({
 
   return (
     <div
-      className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 text-sm ${
+      className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.item} ${
         saving ? "text-emerald-900" : "text-stone-600"
       }`}
     >
@@ -3379,7 +3440,7 @@ function MobileAreaItemLine({
 
   return (
     <div
-      className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 text-sm ${
+      className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.item} ${
         saving ? "text-emerald-900" : "text-stone-600"
       }`}
     >
@@ -3442,7 +3503,7 @@ function MobileSavingsGoalLine({
   const amount = getSavingsGoalAmount(month, goal.id);
 
   return (
-    <div className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 text-sm text-emerald-900">
+    <div className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.item} text-emerald-900`}>
       <div className="min-w-0 flex-1">
         <EditableName
           ariaLabel={`Redigera namnet ${goal.name}`}
@@ -3489,7 +3550,7 @@ function MobileSavingsGoalControl({
   if (!open) {
     return (
       <button
-        className="min-h-11 w-full border-b border-stone-100 text-left text-sm font-medium text-emerald-800"
+        className={`min-h-11 w-full border-b border-stone-100 text-left ${mobileTypography.item} text-emerald-800`}
         onClick={onOpen}
         type="button"
       >
@@ -3506,7 +3567,7 @@ function MobileSavingsGoalControl({
         onSave();
       }}
     >
-      <label className="text-xs font-medium text-stone-500" htmlFor="mobile-savings-goal-name">
+      <label className={`${mobileTypography.metadata} text-stone-500`} htmlFor="mobile-savings-goal-name">
         Namn på sparmål
       </label>
       <input
@@ -3589,7 +3650,7 @@ function ExpenseList({
         return (
           <div className="border-b border-stone-100 py-3" key={categoryId}>
             <div className="flex min-h-10 items-center justify-between gap-4">
-              <div className={`flex min-w-0 flex-1 items-center gap-1 text-sm font-semibold ${
+              <div className={`flex min-w-0 flex-1 items-center gap-1 ${mobileTypography.item} ${
                 saving ? "text-emerald-900" : "text-stone-800"
               }`}>
                 <button
@@ -3600,12 +3661,7 @@ function ExpenseList({
                   onClick={() => onToggleCategory(month.id, categoryId)}
                   type="button"
                 >
-                  <span
-                    aria-hidden="true"
-                    className={`transition-transform ${expanded ? "rotate-90" : ""}`}
-                  >
-                    {canExpand ? "›" : ""}
-                  </span>
+                  {canExpand ? <MobileDisclosureChevron expanded={expanded} /> : null}
                 </button>
                 <EditableName
                   ariaLabel={`Redigera namnet ${category.name}`}
@@ -3646,7 +3702,7 @@ function ExpenseList({
 
                   return (
                     <div
-                      className="flex min-h-8 items-center justify-between gap-4 text-sm text-stone-500"
+                      className={`flex min-h-8 items-center justify-between gap-4 ${mobileTypography.metadata} text-stone-500`}
                       key={itemId}
                     >
                       <div className="min-w-0 flex-1">
@@ -3688,7 +3744,7 @@ function ExpenseList({
                   );
                 })}
                 <button
-                  className="mt-2 min-h-9 text-left text-sm font-medium text-stone-500 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-stone-900"
+                  className={`mt-2 min-h-9 text-left ${mobileTypography.metadata} text-stone-500 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-stone-900`}
                   onClick={() => onAddExpense(categoryId)}
                   type="button"
                 >
@@ -4187,6 +4243,245 @@ function EconomicOverview({ month }: { month: ForecastMonth }) {
   );
 }
 
+function MobileInsightHeading({
+  description,
+  id,
+  illustrationSrc,
+  title,
+}: {
+  description: string;
+  id: string;
+  illustrationSrc: string;
+  title: string;
+}) {
+  return (
+    <div className="flex max-w-2xl items-start gap-3">
+      <div className="relative mt-0.5 h-9 w-9 shrink-0" aria-hidden="true">
+        <Image
+          alt=""
+          className="object-contain"
+          fill
+          sizes="36px"
+          src={illustrationSrc}
+          unoptimized
+        />
+      </div>
+      <div className="min-w-0">
+        <h2
+          className={`${mobileTypography.pageTitle} text-stone-950`}
+          id={id}
+        >
+          {title}
+        </h2>
+        <p
+          className={`${mobileRhythm.headingToDescription} ${mobileTypography.metadata} text-stone-500`}
+        >
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MobileUpcomingInsights({ insights }: { insights: MobileUpcomingInsight[] }) {
+  return (
+    <section
+      aria-labelledby="mobile-upcoming-insights-title"
+      className={`mx-auto w-full max-w-[1560px] ${mobileRhythm.section} pt-0`}
+    >
+      <MobileInsightHeading
+        description="Förändringar och kostnader som kan behöva din uppmärksamhet de närmaste månaderna."
+        id="mobile-upcoming-insights-title"
+        illustrationSrc="/images/mobile-insights/upcoming-events.webp"
+        title="Det här väntar"
+      />
+
+      {insights.length ? (
+        <div className={`${mobileRhythm.headingToContent} grid gap-3 sm:grid-cols-3`}>
+          {insights.map((insight) => (
+            <article
+              aria-label={`Kommande händelser i ${insight.name}`}
+              className="min-w-0 rounded-[18px] border border-stone-200/80 bg-white px-4 py-4 shadow-[0_10px_30px_rgba(28,25,23,0.025)]"
+              key={insight.id}
+            >
+              <div className="flex items-baseline justify-between gap-4 border-b border-stone-100 pb-3">
+                <h3 className={`${mobileTypography.sectionTitle} text-stone-950`}>
+                  {insight.name}
+                </h3>
+                <div className="shrink-0 text-right">
+                  <p className={`${mobileTypography.metadata} text-stone-400`}>Kvar</p>
+                  <p
+                    className={`${mobileTypography.item} tabular-nums ${
+                      insight.remaining < 0 ? "text-rose-700" : "text-stone-900"
+                    }`}
+                  >
+                    {formatAmount(insight.remaining)}
+                  </p>
+                </div>
+              </div>
+              <p className={`mt-3 ${mobileTypography.metadata} text-stone-500`}>
+                {insight.headline}
+              </p>
+              <ul className="mt-2 space-y-3">
+                {insight.events.map((event) => (
+                  <li className="flex gap-2.5" key={event.id}>
+                    <span
+                      aria-hidden="true"
+                      className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                        event.kind === "negative" ? "bg-rose-500" : "bg-[#899986]"
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <p className={`${mobileTypography.item} text-stone-700`}>{event.title}</p>
+                      {event.detail ? (
+                        <p className={`mt-1 ${mobileTypography.metadata} text-stone-400`}>
+                          {event.detail}
+                        </p>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className={`${mobileRhythm.headingToContent} rounded-[18px] border border-stone-200/80 bg-white px-4 py-5 ${mobileTypography.item} text-stone-500`}>
+          Det finns inga fler månader i årets planering.
+        </p>
+      )}
+    </section>
+  );
+}
+
+type MobileCurrentSection = "allocations" | "bills" | "income" | "mortgage" | "savings";
+
+function MobileCurrentDisclosure({
+  amount,
+  children,
+  expanded,
+  id,
+  illustrationSrc,
+  label,
+  onToggle,
+  saving = false,
+}: {
+  amount: string;
+  children: React.ReactNode;
+  expanded: boolean;
+  id: string;
+  illustrationSrc?: string;
+  label: string;
+  onToggle: () => void;
+  saving?: boolean;
+}) {
+  const contentId = `mobile-current-${id}-content`;
+
+  return (
+    <div className="border-b border-stone-100 last:border-b-0">
+      <button
+        aria-controls={contentId}
+        aria-expanded={expanded}
+        className={`flex ${mobileRhythm.disclosureButton} w-full items-center justify-between gap-4 text-left ${mobileTypography.sectionTitle} ${
+          saving ? "text-emerald-900" : "text-stone-950"
+        }`}
+        onClick={onToggle}
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <MobileDisclosureChevron expanded={expanded} />
+          {illustrationSrc ? (
+            <span className="relative h-8 w-8 shrink-0" aria-hidden="true">
+              <Image
+                alt=""
+                className="object-contain"
+                fill
+                sizes="32px"
+                src={illustrationSrc}
+                unoptimized
+              />
+            </span>
+          ) : (
+            <span aria-hidden="true" className="h-8 w-8 shrink-0" />
+          )}
+          <span className="truncate" title={label}>
+            {label}
+          </span>
+        </span>
+        <span
+          className={`shrink-0 ${mobileTypography.item} tabular-nums ${
+            saving ? "text-emerald-900" : "text-stone-600"
+          }`}
+        >
+          {amount}
+        </span>
+      </button>
+      {expanded ? (
+        <div className={mobileRhythm.disclosureContent} id={contentId}>
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MobileLargestCosts({ costs }: { costs: LargestCost[] }) {
+  return (
+    <section
+      aria-labelledby="mobile-largest-costs-title"
+      className={`mx-auto w-full max-w-[1560px] ${mobileRhythm.section} pt-0`}
+    >
+      <MobileInsightHeading
+        description="De tre kostnadsområden som väger tyngst i årsplaneringen."
+        id="mobile-largest-costs-title"
+        illustrationSrc="/images/mobile-insights/largest-costs.webp"
+        title="Mina största kostnader"
+      />
+
+      <div className={`${mobileRhythm.headingToContent} overflow-hidden rounded-[20px] border border-stone-200/80 bg-white px-4 shadow-[0_10px_30px_rgba(28,25,23,0.025)] sm:px-5`}>
+        {costs.map((cost, index) => (
+          <article
+            className={`py-5 ${index ? "border-t border-stone-100" : ""}`}
+            key={cost.id}
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                aria-hidden="true"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f1f3ed] text-lg"
+              >
+                {cost.icon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-4">
+                  <h3 className={`truncate ${mobileTypography.item} text-stone-900`}>{cost.name}</h3>
+                  <p className={`shrink-0 ${mobileTypography.item} tabular-nums text-stone-950`}>
+                    {cost.amount}
+                  </p>
+                </div>
+                <div className="mt-2 flex items-center gap-3">
+                  <div
+                    aria-hidden="true"
+                    className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-stone-100"
+                  >
+                    <div
+                      className="h-full rounded-full bg-[#899986]"
+                      style={{ width: `${Math.min(cost.percentage, 100)}%` }}
+                    />
+                  </div>
+                  <p className={`w-10 shrink-0 text-right ${mobileTypography.metadata} tabular-nums text-stone-500`}>
+                    {cost.percentage} %
+                  </p>
+                </div>
+                <p className={`mt-2 ${mobileTypography.metadata} text-stone-400`}>{cost.insight}</p>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function YearNavigation() {
   return (
     <nav
@@ -4194,7 +4489,7 @@ function YearNavigation() {
       className="mx-auto flex w-full max-w-[1560px] flex-col gap-3 px-4 pb-5 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8"
     >
       <div className="flex items-center justify-between gap-3 sm:justify-start">
-        <span className="text-xs font-medium text-stone-400">År</span>
+        <span className={`${mobileTypography.metadata} text-stone-400 lg:text-xs lg:font-medium lg:leading-4`}>År</span>
         <div className="inline-flex items-center rounded-lg border border-stone-200 bg-white p-1">
           {planningYears.map((year) => {
             const selected = year === planningYear;
@@ -4203,7 +4498,7 @@ function YearNavigation() {
               <button
                 aria-current={selected ? "page" : undefined}
                 aria-disabled="true"
-                className={`min-h-8 min-w-11 cursor-default rounded-md px-2 text-xs font-medium transition sm:min-w-12 sm:text-sm ${
+                className={`min-h-8 min-w-11 cursor-default rounded-md px-2 ${mobileTypography.metadata} transition sm:min-w-12 lg:text-sm lg:font-medium ${
                   selected ? "bg-[#e9eee7] text-stone-950" : "text-stone-400"
                 }`}
                 disabled
@@ -4220,7 +4515,7 @@ function YearNavigation() {
       <div className="flex items-center justify-between gap-2 sm:justify-end">
         <button
           aria-disabled="true"
-          className="min-h-9 cursor-default px-1 text-left text-xs text-stone-400 sm:px-2 sm:text-sm"
+          className={`min-h-9 cursor-default px-1 text-left ${mobileTypography.metadata} text-stone-400 sm:px-2 lg:text-sm`}
           disabled
           type="button"
         >
@@ -4228,7 +4523,7 @@ function YearNavigation() {
         </button>
         <button
           aria-disabled="true"
-          className="min-h-9 shrink-0 cursor-default rounded-md border border-stone-200 bg-white px-3 text-xs font-medium text-stone-500 sm:text-sm"
+          className={`min-h-9 shrink-0 cursor-default rounded-md border border-stone-200 bg-white px-3 ${mobileTypography.metadata} text-stone-500 lg:text-sm lg:font-medium`}
           disabled
           type="button"
         >
@@ -4242,7 +4537,7 @@ function YearNavigation() {
 function ProductFooter() {
   return (
     <footer className="mt-16 border-t border-stone-200/80 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-4 text-xs text-stone-400 sm:flex-row sm:items-end sm:justify-between">
+      <div className={`mx-auto flex w-full max-w-[1560px] flex-col gap-4 ${mobileTypography.metadata} text-stone-400 sm:flex-row sm:items-end sm:justify-between lg:text-xs lg:leading-4`}>
         <div>
           <p className="font-semibold text-stone-700">Fameko</p>
           <p className="mt-1">Familjens ekonomi, tydligt framåt.</p>
@@ -4259,6 +4554,7 @@ function ProductFooter() {
 function MonthDetail({
   editingKey,
   editingValue,
+  embedded = false,
   expandedCategories,
   expandedCostAccount,
   expandedMortgage,
@@ -4287,6 +4583,7 @@ function MonthDetail({
 }: {
   editingKey: string | null;
   editingValue: string;
+  embedded?: boolean;
   expandedCategories: Record<string, boolean>;
   expandedCostAccount: boolean;
   expandedMortgage: boolean;
@@ -4321,15 +4618,20 @@ function MonthDetail({
   const remainingAmount = getRemainingAmount(month);
 
   return (
-    <section className="mx-auto mt-10 max-w-6xl px-4 pb-12 sm:px-6 lg:px-8">
-      <div className="grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-stone-500">
-            <span className={`h-2 w-2 rounded-full ${statusDot[month.status]}`} />
-            <span>{month.label}</span>
+    <section
+      aria-label={embedded ? `Planering för ${month.name}` : undefined}
+      className={embedded ? "py-5 sm:py-6" : "mx-auto mt-10 max-w-6xl px-4 pb-12 sm:px-6 lg:px-8"}
+    >
+      <div className={embedded ? "" : "grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]"}>
+        {embedded ? null : (
+          <div>
+            <div className={`flex items-center gap-2 ${mobileTypography.metadata} text-stone-500`}>
+              <span className={`h-2 w-2 rounded-full ${statusDot[month.status]}`} />
+              <span>{month.label}</span>
+            </div>
+            <h2 className={`mt-2 ${mobileTypography.pageTitle} text-stone-950`}>{month.name}</h2>
           </div>
-          <h2 className="mt-3 text-4xl font-semibold text-stone-950">{month.name}</h2>
-        </div>
+        )}
 
         <div className="min-w-0">
           <div className="grid border-y border-stone-200 sm:grid-cols-3 sm:gap-8 sm:py-5">
@@ -4339,7 +4641,7 @@ function MonthDetail({
           </div>
 
           <div className="mt-8">
-            <PlanningSectionHeading first label="Inkomster & fördelningar" />
+            <PlanningSectionHeading first label="Inkomster och fördelningar" />
 
             <PlanningPrimaryGroup amount={month.income} label="Inkomster">
               {incomeLines.map((line) => (
@@ -4380,7 +4682,7 @@ function MonthDetail({
 
             <PlanningLine amount={remainingAmount} label="Kvar att fördela" result />
 
-            <PlanningSectionHeading label="Räkningskonto & lån" />
+            <PlanningSectionHeading label="Räkningskonto och lån" />
 
             <PlanningGroup
               amount={billAccountAllocation}
@@ -4448,7 +4750,7 @@ function MonthDetail({
               />
             </PlanningGroup>
 
-            <PlanningSectionHeading label="Sparande & investeringar" />
+            <PlanningSectionHeading label="Sparande och investeringar" />
 
             <PlanningGroup
               amount={savingAllocation}
@@ -4494,6 +4796,233 @@ function MonthDetail({
   );
 }
 
+function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
+  const [expandedSection, setExpandedSection] = useState<MobileCurrentSection | null>(null);
+  const {
+    editingKey,
+    editingValue,
+    expandedCategories,
+    labels,
+    month,
+    nameEditor,
+    openingBalance,
+    savingsGoalDraft,
+    savingsGoalFormOpen,
+    savingsGoals,
+    onAddExpense,
+    onBeginEdit,
+    onCancelEdit,
+    onChangeEdit,
+    onRequestDelete,
+    onCancelSavingsGoal,
+    onChangeSavingsGoalDraft,
+    onOpenSavingsGoal,
+    onSaveEdit,
+    onSaveSavingsGoal,
+    onToggleCategory,
+  } = props;
+  const billAccountCategories = getBillAccountCategories(month);
+  const billAccountAllocation = getAllocationAmount(month, "billAccount");
+  const billAccountCosts = getBillAccountCosts(month);
+  const mortgageAllocation = getAllocationAmount(month, "mortgage");
+  const savingAllocation = getAllocationAmount(month, "savings");
+  const remainingAmount = getRemainingAmount(month);
+
+  function toggleSection(section: MobileCurrentSection) {
+    setExpandedSection((current) => (current === section ? null : section));
+  }
+
+  return (
+    <section
+      aria-labelledby="mobile-current-month-title"
+      className={`mx-auto w-full max-w-[1560px] ${mobileRhythm.section} pt-6 sm:pt-8`}
+    >
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h2
+            className={`${mobileTypography.pageTitle} text-stone-950`}
+            id="mobile-current-month-title"
+          >
+            Den här månaden
+          </h2>
+          <p
+            className={`${mobileRhythm.headingToDescription} ${mobileTypography.metadata} text-stone-500`}
+          >
+            Börja med överblicken och öppna det du vill förstå eller ändra.
+          </p>
+        </div>
+        <div className={`mb-0.5 flex shrink-0 items-center gap-2 ${mobileTypography.metadata} text-stone-500`}>
+          <span className={`h-2 w-2 rounded-full ${statusDot[props.month.status]}`} />
+          <span>{props.month.name}</span>
+        </div>
+      </div>
+
+      <div className={`${mobileRhythm.headingToContent} overflow-hidden rounded-[20px] border border-stone-200/80 bg-white px-4 shadow-[0_12px_36px_rgba(28,25,23,0.03)] sm:px-6`}>
+        <MobileCurrentDisclosure
+          amount={month.income}
+          expanded={expandedSection === "income"}
+          id="income"
+          illustrationSrc="/images/mobile-insights/income.webp"
+          label="Inkomster"
+          onToggle={() => toggleSection("income")}
+        >
+          {incomeLines.map((line) => (
+            <MobileIncomeLine
+              editingKey={editingKey}
+              editingValue={editingValue}
+              incomeLineKey={line.key}
+              key={line.key}
+              label={labels.incomeLines[line.key]}
+              month={month}
+              nameEditor={nameEditor}
+              onBeginEdit={onBeginEdit}
+              onCancelEdit={onCancelEdit}
+              onChangeEdit={onChangeEdit}
+              onSaveEdit={onSaveEdit}
+            />
+          ))}
+        </MobileCurrentDisclosure>
+
+        <MobileCurrentDisclosure
+          amount={month.expenses}
+          expanded={expandedSection === "allocations"}
+          id="allocations"
+          label="Fördelningar"
+          onToggle={() => toggleSection("allocations")}
+        >
+          {allocationRows.map((allocation) => (
+            <MobileAllocationLine
+              allocationKey={allocation.key}
+              editingKey={editingKey}
+              editingValue={editingValue}
+              key={allocation.key}
+              label={labels.allocations[allocation.key]}
+              month={month}
+              nameEditor={nameEditor}
+              onBeginEdit={onBeginEdit}
+              onCancelEdit={onCancelEdit}
+              onChangeEdit={onChangeEdit}
+              onSaveEdit={onSaveEdit}
+              saving={allocation.key === "savings"}
+            />
+          ))}
+        </MobileCurrentDisclosure>
+
+        <PlanningLine amount={remainingAmount} label="Kvar att fördela" result />
+
+        <MobileCurrentDisclosure
+          amount={billAccountAllocation}
+          expanded={expandedSection === "bills"}
+          id="bills"
+          illustrationSrc="/images/mobile-insights/bills.webp"
+          label={labels.allocations.billAccount}
+          onToggle={() => toggleSection("bills")}
+        >
+          <PlanningLine amount={billAccountAllocation} label="Tillfört konto" />
+          <MobileOpeningBalance
+            amount={openingBalance}
+            editingKey={editingKey}
+            editingValue={editingValue}
+            onBeginEdit={onBeginEdit}
+            onCancelEdit={onCancelEdit}
+            onChangeEdit={onChangeEdit}
+            onSaveEdit={onSaveEdit}
+          />
+          <PlanningLine amount={month.startBalance} label={`Startsaldo ${month.label}`} />
+          <ExpenseList
+            categories={billAccountCategories}
+            editingKey={editingKey}
+            editingValue={editingValue}
+            embedded
+            expandedCategories={expandedCategories}
+            month={month}
+            nameEditor={nameEditor}
+            onAddExpense={onAddExpense}
+            onBeginEdit={onBeginEdit}
+            onCancelEdit={onCancelEdit}
+            onChangeEdit={onChangeEdit}
+            onRequestDelete={onRequestDelete}
+            onSaveEdit={onSaveEdit}
+            onToggleCategory={onToggleCategory}
+          />
+          <PlanningLine amount={billAccountCosts} label="Kostnader" result />
+          <PlanningLine amount={month.calculatedBalance} label="Saldo" result />
+        </MobileCurrentDisclosure>
+
+        <MobileCurrentDisclosure
+          amount={mortgageAllocation}
+          expanded={expandedSection === "mortgage"}
+          id="mortgage"
+          label={labels.allocations.mortgage}
+          onToggle={() => toggleSection("mortgage")}
+        >
+          <PlanningLine amount={mortgageAllocation} label="Tillfört" />
+          {mortgageRows.map((row) => (
+            <MobileAreaItemLine
+              areaItemKey={row.key}
+              editingKey={editingKey}
+              editingValue={editingValue}
+              key={row.key}
+              label={labels.areaItems[row.key]}
+              month={month}
+              nameEditor={nameEditor}
+              onBeginEdit={onBeginEdit}
+              onCancelEdit={onCancelEdit}
+              onChangeEdit={onChangeEdit}
+              onSaveEdit={onSaveEdit}
+            />
+          ))}
+          <PlanningLine
+            amount={getAreaRemainingAmount(month, "mortgage")}
+            label="Kvar att placera"
+            result
+          />
+        </MobileCurrentDisclosure>
+
+        <MobileCurrentDisclosure
+          amount={savingAllocation}
+          expanded={expandedSection === "savings"}
+          id="savings"
+          illustrationSrc="/images/mobile-insights/savings.webp"
+          label={labels.allocations.savings}
+          onToggle={() => toggleSection("savings")}
+          saving
+        >
+          <PlanningLine amount={savingAllocation} label="Tillfört" saving />
+          {savingsGoals.map((goal) => (
+            <MobileSavingsGoalLine
+              editingKey={editingKey}
+              editingValue={editingValue}
+              goal={goal}
+              key={goal.id}
+              month={month}
+              nameEditor={nameEditor}
+              onBeginEdit={onBeginEdit}
+              onCancelEdit={onCancelEdit}
+              onChangeEdit={onChangeEdit}
+              onSaveEdit={onSaveEdit}
+            />
+          ))}
+          <MobileSavingsGoalControl
+            draft={savingsGoalDraft}
+            onCancel={onCancelSavingsGoal}
+            onChange={onChangeSavingsGoalDraft}
+            onOpen={onOpenSavingsGoal}
+            onSave={onSaveSavingsGoal}
+            open={savingsGoalFormOpen}
+          />
+          <PlanningLine
+            amount={getAreaRemainingAmount(month, "savings")}
+            label="Kvar att placera"
+            result
+            saving
+          />
+        </MobileCurrentDisclosure>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const [planningData, setPlanningData] = useState(seedPlanningData);
   const [cloudLoadState, setCloudLoadState] = useState<CloudLoadState>("loading");
@@ -4524,6 +5053,7 @@ export default function Home() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [annualPlanningOpen, setAnnualPlanningOpen] = useState(false);
   const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
   const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
   const [addDraft, setAddDraft] = useState<AddExpenseDraft>({
@@ -4634,6 +5164,7 @@ export default function Home() {
     cloudLoadState === "ready" && savedSnapshot !== null && currentSnapshot !== savedSnapshot;
 
   const months = useMemo(() => buildForecastMonths(planningData), [planningData]);
+  const largestCosts = useMemo(() => getLargestCosts(months), [months]);
   const labels = useMemo(() => getResolvedPlanningLabels(planningData), [planningData]);
   const savingsGoals = useMemo(
     () =>
@@ -4648,6 +5179,24 @@ export default function Home() {
     months.find((month) => month.id === selectedMonthId) ?? months[0];
   const currentMonth =
     months.find((month) => month.id === currentMonthId) ?? selectedMonth;
+  const upcomingInsights = useMemo(
+    () =>
+      buildMobileUpcomingInsights({
+        currentMonthId: currentMonth.id,
+        monthIds,
+        months: months.map((month) => ({
+          costTotal: month.categories
+            .filter((category) => category.id !== "sparande")
+            .reduce((total, category) => total + parseAmount(category.amount), 0),
+          id: month.id,
+          income: parseAmount(month.income),
+          name: month.name,
+          remaining: parseSignedAmount(getRemainingAmount(month)),
+        })),
+        planningData,
+      }),
+    [currentMonth.id, months, planningData],
+  );
   const carPreview: CarPreviewEconomics = {
     loanPayment: parseAmount(getCategoryItemAmount(currentMonth, "bil", "bil-billan")),
     monthlyCost: parseAmount(getCategoryAmount(currentMonth, "bil")),
@@ -4913,7 +5462,7 @@ export default function Home() {
     setPendingDelete(null);
   }
 
-  function openAddDialog(categoryId?: string) {
+  function openAddDialog(categoryId?: string, monthId = selectedMonth.id) {
     setAddDraft({
       categoryId:
         categoryId && categoryOptions.some((category) => category.id === categoryId)
@@ -4921,7 +5470,7 @@ export default function Home() {
           : categoryOptions[0]?.id ?? "boende",
       description: "",
       amount: "",
-      monthId: selectedMonth.id,
+      monthId,
       frequency: "once",
     });
     setAddDialogOpen(true);
@@ -4985,6 +5534,7 @@ export default function Home() {
     setPendingDelete(null);
     setScopeDialogOpen(false);
     setAddDialogOpen(false);
+    setAnnualPlanningOpen(false);
     setSavingsGoalDraft("");
     setSavingsGoalFormOpen(false);
   }
@@ -5085,7 +5635,7 @@ export default function Home() {
         aria-labelledby="workspace-hero-title"
         className="mx-auto w-full max-w-[1560px] px-4 pb-6 pt-4 sm:px-6 sm:pb-7 sm:pt-5 lg:px-8 lg:pt-6"
       >
-        <div className="relative h-[480px] overflow-hidden rounded-[22px] border border-white/70 bg-stone-200 shadow-[0_18px_56px_rgba(28,25,23,0.065)] sm:h-[340px] sm:rounded-[26px] lg:h-[380px] xl:h-[396px]">
+        <div className="relative h-[340px] overflow-hidden rounded-[22px] border border-white/70 bg-stone-200 shadow-[0_18px_56px_rgba(28,25,23,0.065)] sm:h-[360px] sm:rounded-[26px] lg:h-[380px] xl:h-[396px]">
           <Image
             alt=""
             aria-hidden="true"
@@ -5119,7 +5669,7 @@ export default function Home() {
               <p className="mt-3 text-xs text-stone-500">Alla belopp visas efter skatt.</p>
             </div>
 
-            <div className="w-full translate-y-3 self-center lg:max-w-[560px] lg:justify-self-end">
+            <div className="hidden w-full translate-y-3 self-center lg:block lg:max-w-[560px] lg:justify-self-end">
               <MonthlySnapshot month={currentMonth} />
             </div>
           </div>
@@ -5128,42 +5678,43 @@ export default function Home() {
 
       <EconomicOverview month={currentMonth} />
 
-      <YearNavigation />
+      <div className="hidden lg:block">
+        <YearNavigation />
+        <YearOverview
+          currentMonthId={currentMonthId}
+          editingKey={editingTarget ? amountKey(editingTarget) : null}
+          editingValue={editingValue}
+          expandedCostAccount={expandedCostAccount}
+          expandedGridCategories={expandedGridCategories}
+          expandedMortgage={expandedMortgage}
+          expandedSavings={expandedSavings}
+          labels={labels}
+          months={months}
+          nameEditor={nameEditor}
+          savingsGoalDraft={savingsGoalDraft}
+          savingsGoalFormOpen={savingsGoalFormOpen}
+          savingsGoals={savingsGoals}
+          onAddExpense={openAddDialog}
+          onBeginEdit={beginEdit}
+          onCancelEdit={cancelEdit}
+          onChangeEdit={setEditingValue}
+          onRequestDelete={requestDelete}
+          onCancelSavingsGoal={cancelSavingsGoalForm}
+          onChangeSavingsGoalDraft={setSavingsGoalDraft}
+          onOpenSavingsGoal={openSavingsGoalForm}
+          onSelectMonth={selectMonth}
+          onSaveEdit={saveEdit}
+          onSaveSavingsGoal={saveSavingsGoal}
+          onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
+          onToggleGridCategory={toggleGridCategory}
+          onToggleMortgage={() => setExpandedMortgage((current) => !current)}
+          onToggleSavings={() => setExpandedSavings((current) => !current)}
+          selectedMonthId={selectedMonth.id}
+        />
+      </div>
 
-      <YearOverview
-        currentMonthId={currentMonthId}
-        editingKey={editingTarget ? amountKey(editingTarget) : null}
-        editingValue={editingValue}
-        expandedCostAccount={expandedCostAccount}
-        expandedGridCategories={expandedGridCategories}
-        expandedMortgage={expandedMortgage}
-        expandedSavings={expandedSavings}
-        labels={labels}
-        months={months}
-        nameEditor={nameEditor}
-        savingsGoalDraft={savingsGoalDraft}
-        savingsGoalFormOpen={savingsGoalFormOpen}
-        savingsGoals={savingsGoals}
-        onAddExpense={openAddDialog}
-        onBeginEdit={beginEdit}
-        onCancelEdit={cancelEdit}
-        onChangeEdit={setEditingValue}
-        onRequestDelete={requestDelete}
-        onCancelSavingsGoal={cancelSavingsGoalForm}
-        onChangeSavingsGoalDraft={setSavingsGoalDraft}
-        onOpenSavingsGoal={openSavingsGoalForm}
-        onSelectMonth={selectMonth}
-        onSaveEdit={saveEdit}
-        onSaveSavingsGoal={saveSavingsGoal}
-        onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
-        onToggleGridCategory={toggleGridCategory}
-        onToggleMortgage={() => setExpandedMortgage((current) => !current)}
-        onToggleSavings={() => setExpandedSavings((current) => !current)}
-        selectedMonthId={selectedMonth.id}
-      />
-
-      <div className="sm:hidden">
-        <MonthDetail
+      <div className="lg:hidden">
+        <MobileCurrentMonthPlanning
           editingKey={editingTarget ? amountKey(editingTarget) : null}
           editingValue={editingValue}
           expandedCategories={expandedCategories}
@@ -5171,13 +5722,13 @@ export default function Home() {
           expandedMortgage={expandedMortgage}
           expandedSavings={expandedSavings}
           labels={labels}
-          month={selectedMonth}
+          month={currentMonth}
           nameEditor={nameEditor}
           openingBalance={months[0].startBalance}
           savingsGoalDraft={savingsGoalDraft}
           savingsGoalFormOpen={savingsGoalFormOpen}
           savingsGoals={savingsGoals}
-          onAddExpense={openAddDialog}
+          onAddExpense={(categoryId) => openAddDialog(categoryId, currentMonth.id)}
           onBeginEdit={beginEdit}
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
@@ -5192,6 +5743,8 @@ export default function Home() {
           onToggleMortgage={() => setExpandedMortgage((current) => !current)}
           onToggleSavings={() => setExpandedSavings((current) => !current)}
         />
+        <MobileUpcomingInsights insights={upcomingInsights} />
+        <MobileLargestCosts costs={largestCosts} />
       </div>
 
       <PersonalEconomySection
@@ -5199,6 +5752,88 @@ export default function Home() {
         housingData={planningData.housingData}
         savingsPreview={savingsPreview}
       />
+
+      <section
+        aria-label="Fullständig årsplanering"
+        className="mx-auto w-full max-w-[1560px] px-4 pb-3 pt-0 sm:px-6 lg:hidden"
+      >
+        <button
+          aria-controls="mobile-full-year-planning"
+          aria-expanded={annualPlanningOpen}
+          className={`flex ${mobileRhythm.disclosureButton} w-full items-center justify-between gap-4 rounded-[16px] border border-stone-300 bg-white px-5 text-left ${mobileTypography.sectionTitle} text-stone-900 shadow-[0_10px_30px_rgba(28,25,23,0.025)] transition hover:border-stone-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900`}
+          onClick={() => setAnnualPlanningOpen((open) => !open)}
+          type="button"
+        >
+          <span>{annualPlanningOpen ? "Dölj hela årsplaneringen" : "Visa hela årsplaneringen"}</span>
+          <MobileDisclosureChevron expanded={annualPlanningOpen} />
+        </button>
+
+        {annualPlanningOpen ? (
+          <div className="-mx-4 mt-7 sm:-mx-6" id="mobile-full-year-planning">
+            <YearNavigation />
+            <YearOverview
+              currentMonthId={currentMonthId}
+              editingKey={editingTarget ? amountKey(editingTarget) : null}
+              editingValue={editingValue}
+              expandedCostAccount={expandedCostAccount}
+              expandedGridCategories={expandedGridCategories}
+              expandedMortgage={expandedMortgage}
+              expandedSavings={expandedSavings}
+              labels={labels}
+              months={months}
+              nameEditor={nameEditor}
+              savingsGoalDraft={savingsGoalDraft}
+              savingsGoalFormOpen={savingsGoalFormOpen}
+              savingsGoals={savingsGoals}
+              onAddExpense={openAddDialog}
+              onBeginEdit={beginEdit}
+              onCancelEdit={cancelEdit}
+              onChangeEdit={setEditingValue}
+              onRequestDelete={requestDelete}
+              onCancelSavingsGoal={cancelSavingsGoalForm}
+              onChangeSavingsGoalDraft={setSavingsGoalDraft}
+              onOpenSavingsGoal={openSavingsGoalForm}
+              onSelectMonth={selectMonth}
+              onSaveEdit={saveEdit}
+              onSaveSavingsGoal={saveSavingsGoal}
+              onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
+              onToggleGridCategory={toggleGridCategory}
+              onToggleMortgage={() => setExpandedMortgage((current) => !current)}
+              onToggleSavings={() => setExpandedSavings((current) => !current)}
+              selectedMonthId={selectedMonth.id}
+            />
+            <MonthDetail
+              editingKey={editingTarget ? amountKey(editingTarget) : null}
+              editingValue={editingValue}
+              expandedCategories={expandedCategories}
+              expandedCostAccount={expandedCostAccount}
+              expandedMortgage={expandedMortgage}
+              expandedSavings={expandedSavings}
+              labels={labels}
+              month={selectedMonth}
+              nameEditor={nameEditor}
+              openingBalance={months[0].startBalance}
+              savingsGoalDraft={savingsGoalDraft}
+              savingsGoalFormOpen={savingsGoalFormOpen}
+              savingsGoals={savingsGoals}
+              onAddExpense={openAddDialog}
+              onBeginEdit={beginEdit}
+              onCancelEdit={cancelEdit}
+              onChangeEdit={setEditingValue}
+              onRequestDelete={requestDelete}
+              onCancelSavingsGoal={cancelSavingsGoalForm}
+              onChangeSavingsGoalDraft={setSavingsGoalDraft}
+              onOpenSavingsGoal={openSavingsGoalForm}
+              onSaveEdit={saveEdit}
+              onSaveSavingsGoal={saveSavingsGoal}
+              onToggleCategory={toggleCategory}
+              onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
+              onToggleMortgage={() => setExpandedMortgage((current) => !current)}
+              onToggleSavings={() => setExpandedSavings((current) => !current)}
+            />
+          </div>
+        ) : null}
+      </section>
 
       <ProductFooter />
 

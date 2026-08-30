@@ -11,6 +11,7 @@ import {
   formatPreviewPercentage,
   PersonalEconomyCard,
 } from "./personal-economy-card.tsx";
+import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 
 export type SavingsPreviewSource = {
   monthlyIncome: number[];
@@ -82,22 +83,26 @@ export function PersonalEconomySection({
   return (
     <section
       aria-labelledby="personal-economy-title"
-      className="mx-auto w-full max-w-[1560px] px-4 pb-2 pt-4 sm:px-6 sm:pt-16 lg:px-8 lg:pt-20"
+      className={`mx-auto w-full max-w-[1560px] ${mobileRhythm.section} pt-0 lg:px-8 lg:pb-2 lg:pt-20`}
     >
       <div className="max-w-3xl">
         <h2
-          className="text-2xl font-semibold tracking-[-0.035em] text-stone-950 sm:text-[28px]"
+          className={`${mobileTypography.pageTitle} text-stone-950 lg:text-[28px]`}
           id="personal-economy-title"
         >
           Min ekonomi
         </h2>
-        <p className="mt-3 text-sm leading-6 text-stone-500 sm:text-[15px]">
+        <p
+          className={`${mobileRhythm.headingToDescription} ${mobileTypography.metadata} text-stone-500 lg:mt-3 lg:text-[15px] lg:leading-6`}
+        >
           Fördjupa dig i de delar av hushållets ekonomi som förändras mer sällan än den löpande
           årsplaneringen.
         </p>
       </div>
 
-      <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div
+        className={`${mobileRhythm.headingToContent} grid grid-cols-1 gap-5 md:grid-cols-2 lg:mt-7 xl:grid-cols-3`}
+      >
         {modules.map((module) => (
           <div className="min-w-0" key={module.id}>
             {module.preview}

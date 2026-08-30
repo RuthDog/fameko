@@ -15,6 +15,7 @@ import {
   formatPreviewPercentage,
   PersonalEconomyCard,
 } from "./personal-economy-card.tsx";
+import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 
 type NumericHousingField =
   | "propertyValue"
@@ -146,16 +147,18 @@ export function HousingOverview({
 
         <div className="flex min-w-0 flex-col p-5 sm:p-7 lg:p-9 xl:p-11">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-stone-400">
+            <p className="hidden text-xs font-medium uppercase tracking-[0.12em] text-stone-400 lg:block">
               Livsområde
             </p>
             <h2
-              className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-stone-950 sm:text-[28px]"
+              className={`${mobileTypography.pageTitle} text-stone-950 lg:mt-2 lg:text-[28px]`}
               id="housing-overview-title"
             >
               Boende
             </h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-stone-500">
+            <p
+              className={`${mobileRhythm.headingToDescription} max-w-xl ${mobileTypography.metadata} text-stone-500 lg:mt-3 lg:text-sm lg:leading-6`}
+            >
               {getHousingSummary(economics.loanToValue)}
             </p>
           </div>

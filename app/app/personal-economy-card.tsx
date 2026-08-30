@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 
+import { mobileTypography } from "./mobile-design-system.ts";
+
 export type PersonalEconomyMetric = {
   indicatorClassName?: string;
   label: string;
@@ -46,9 +48,9 @@ export function PersonalEconomyCard({
   return (
     <article
       aria-labelledby={titleId}
-      className="flex h-[464px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white shadow-[0_14px_42px_rgba(28,25,23,0.035)] sm:h-[440px]"
+      className="flex h-[400px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white shadow-[0_14px_42px_rgba(28,25,23,0.035)] lg:h-[440px]"
     >
-      <div className="relative h-44 shrink-0 overflow-hidden bg-[#f1efe8]">
+      <div className="relative h-28 shrink-0 overflow-hidden bg-[#f1efe8] lg:h-44">
         <Image
           alt={illustrationAlt}
           className="object-contain p-4"
@@ -61,16 +63,20 @@ export function PersonalEconomyCard({
 
       <div className="flex min-h-0 flex-1 flex-col p-5 sm:p-6">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-stone-400">
+          <p className="hidden text-[11px] font-medium uppercase tracking-[0.1em] text-stone-400 lg:block">
             Livsområde
           </p>
           <h3
-            className="mt-1 text-xl font-semibold tracking-[-0.025em] text-stone-950"
+            className={`${mobileTypography.sectionTitle} text-stone-950 lg:mt-1 lg:text-xl lg:leading-7 lg:tracking-[-0.025em]`}
             id={titleId}
           >
             {title}
           </h3>
-          <p className="mt-2 min-h-12 text-sm leading-6 text-stone-500">{summary}</p>
+          <p
+            className={`mt-2 min-h-12 ${mobileTypography.metadata} text-stone-500 lg:text-sm lg:leading-6`}
+          >
+            {summary}
+          </p>
         </div>
 
         <dl
@@ -81,7 +87,9 @@ export function PersonalEconomyCard({
               className={`min-w-0 ${index === 0 ? "pr-3" : "px-3 last:pr-0"}`}
               key={metric.label}
             >
-              <dt className="flex min-h-8 items-start gap-1.5 text-[11px] leading-4 text-stone-400">
+              <dt
+                className={`flex min-h-8 items-start gap-1.5 ${mobileTypography.metadata} text-stone-400 lg:text-[11px] lg:leading-4`}
+              >
                 {metric.indicatorClassName ? (
                   <span
                     aria-hidden="true"
@@ -90,7 +98,9 @@ export function PersonalEconomyCard({
                 ) : null}
                 {metric.label}
               </dt>
-              <dd className="mt-1 break-words text-[15px] font-semibold leading-5 tracking-[-0.02em] tabular-nums text-stone-900 sm:text-base">
+              <dd
+                className={`mt-1 break-words ${mobileTypography.sectionTitle} tabular-nums text-stone-900 lg:text-base lg:leading-5`}
+              >
                 {metric.value}
               </dd>
             </div>
@@ -99,7 +109,7 @@ export function PersonalEconomyCard({
 
         <span
           aria-label={`${actionLabel}, kommer i en senare version`}
-          className="mt-auto pt-4 text-xs font-medium text-stone-500"
+          className={`mt-auto pt-4 ${mobileTypography.metadata} text-stone-500 lg:text-xs lg:font-medium lg:leading-4`}
         >
           {actionLabel} <span aria-hidden="true">→</span>
         </span>
