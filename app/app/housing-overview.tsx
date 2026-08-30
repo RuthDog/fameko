@@ -83,26 +83,34 @@ export function HousingPreview({ data }: { data: HousingData | undefined }) {
   const housing = data ?? emptyHousingData;
   const economics = calculateHousingEconomics(housing);
   const loanToValueBand = getLoanToValueBand(economics.loanToValue);
-
-  return (
-    <PersonalEconomyCard
-      actionLabel="Visa boende"
-      illustrationAlt="Stilren illustration av ett modernt nordiskt hus"
-      illustrationSrc="/images/dashboard/housing-home.webp"
-      metrics={[
-        {
+  const metrics = [
+    economics.loanToValue === null
+      ? null
+      : {
           indicatorClassName: loanToValueBand
             ? loanToValueColors[loanToValueBand]
             : undefined,
           label: "Belåningsgrad",
           value: formatPreviewPercentage(economics.loanToValue),
         },
-        { label: "Bolån", value: formatPreviewCurrency(housing.totalMortgage) },
-        {
+    housing.totalMortgage === null
+      ? null
+      : { label: "Bolån", value: formatPreviewCurrency(housing.totalMortgage) },
+    economics.monthlyMortgageCost === null
+      ? null
+      : {
           label: "Månadskostnad",
           value: formatPreviewCurrency(economics.monthlyMortgageCost),
         },
-      ]}
+  ].filter((metric) => metric !== null);
+
+  return (
+    <PersonalEconomyCard
+      actionLabel="Visa boende"
+      href="/app/boende"
+      illustrationAlt="Stilren illustration av ett modernt nordiskt hus"
+      illustrationSrc="/images/dashboard/housing-home-neutral.jpg"
+      metrics={metrics}
       summary={getHousingSummary(economics.loanToValue)}
       title="Boende"
     />
@@ -111,9 +119,11 @@ export function HousingPreview({ data }: { data: HousingData | undefined }) {
 
 export function HousingOverview({
   data,
+  embedded = false,
   onChange,
 }: {
   data: HousingData | undefined;
+  embedded?: boolean;
   onChange: (data: HousingData) => void;
 }) {
   const housing = data ?? emptyHousingData;
@@ -131,7 +141,11 @@ export function HousingOverview({
   return (
     <section
       aria-labelledby="housing-overview-title"
-      className="mx-auto w-full max-w-[1560px] px-4 pb-8 sm:px-6 sm:pb-10 lg:px-8"
+      className={
+        embedded
+          ? "mt-8 w-full"
+          : "mx-auto w-full max-w-[1560px] px-4 pb-8 sm:px-6 sm:pb-10 lg:px-8"
+      }
     >
       <article className="grid overflow-hidden rounded-[26px] border border-stone-200/80 bg-[#fbfaf7] shadow-[0_18px_55px_rgba(28,25,23,0.045)] lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:rounded-[30px]">
         <div className="relative min-h-[230px] overflow-hidden bg-[#f1efe8] sm:min-h-[310px] lg:min-h-[560px]">
@@ -140,21 +154,18 @@ export function HousingOverview({
             className="object-contain p-5 sm:p-8 lg:p-10"
             fill
             sizes="(max-width: 1023px) calc(100vw - 48px), min(660px, 42vw)"
-            src="/images/dashboard/housing-home.webp"
+            src="/images/dashboard/housing-home-neutral.jpg"
             unoptimized
           />
         </div>
 
         <div className="flex min-w-0 flex-col p-5 sm:p-7 lg:p-9 xl:p-11">
           <div>
-            <p className="hidden text-xs font-medium uppercase tracking-[0.12em] text-stone-400 lg:block">
-              Livsområde
-            </p>
             <h2
-              className={`${mobileTypography.pageTitle} text-stone-950 lg:mt-2 lg:text-[28px]`}
+              className={`${mobileTypography.pageTitle} text-stone-950 lg:text-[28px]`}
               id="housing-overview-title"
             >
-              Boende
+              Bostad och bolån
             </h2>
             <p
               className={`${mobileRhythm.headingToDescription} max-w-xl ${mobileTypography.metadata} text-stone-500 lg:mt-3 lg:text-sm lg:leading-6`}

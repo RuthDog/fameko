@@ -1,15 +1,19 @@
+import {
+  getCarLoanMode,
+  type CarData,
+  type CarPlanningEconomics,
+} from "../../shared/planning/car.ts";
 import { type HousingData } from "../../shared/planning/housing.ts";
 import {
   calculateSavingsPreview,
-  getCarPreviewSummary,
   getSavingsPreviewSummary,
-  type CarPreviewEconomics,
 } from "../../shared/planning/personal-economy.ts";
 import { HousingPreview } from "./housing-overview.tsx";
 import {
   formatPreviewCurrency,
   formatPreviewPercentage,
   PersonalEconomyCard,
+  type PersonalEconomyMetric,
 } from "./personal-economy-card.tsx";
 import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 
@@ -18,17 +22,67 @@ export type SavingsPreviewSource = {
   monthlySavings: number[];
 };
 
-function CarPreview({ economics }: { economics: CarPreviewEconomics }) {
+function CarPreview({
+  data,
+  planning,
+}: {
+  data: CarData | undefined;
+  planning: CarPlanningEconomics;
+}) {
+  const loanMode = getCarLoanMode(data);
+  const metrics: PersonalEconomyMetric[] = [];
+
+  if (loanMode === "withLoan") {
+    metrics.push({ label: "Billån", value: formatPreviewCurrency(data?.currentLoanBalance ?? null) });
+  } else if (loanMode === "loanFree") {
+    metrics.push({ label: "Lån", value: "Lånefri" });
+  } else if (planning.hasPlannedLoan && planning.monthlyPlannedLoanPayment > 0) {
+    metrics.push({
+      label: "Billån i planeringen",
+      value: formatPreviewCurrency(planning.monthlyPlannedLoanPayment),
+    });
+  }
+
+  if (planning.monthlyPlannedCost > 0) {
+    metrics.push({
+      label: "Månadskostnad",
+      value: formatPreviewCurrency(planning.monthlyPlannedCost),
+    });
+  }
+
+  if (data?.annualInsurance !== null && data?.annualInsurance !== undefined) {
+    metrics.push({
+      label: "Försäkring / år",
+      value: formatPreviewCurrency(data.annualInsurance),
+    });
+  }
+
+  if (data?.annualService !== null && data?.annualService !== undefined) {
+    metrics.push({
+      label: "Service / år",
+      value: formatPreviewCurrency(data.annualService),
+    });
+  }
+
+  let summary = "Biluppgifter saknas";
+  if (loanMode === "loanFree") {
+    summary = "Bilen är registrerad som lånefri.";
+  } else if (loanMode === "withLoan") {
+    summary = "Billånet och månadens planerade bilkostnad visas från sina respektive källor.";
+  } else if (data) {
+    summary = "Komplettera låneskulden för att visa om bilen har lån eller är lånefri.";
+  } else if (planning.hasPlannedLoan) {
+    summary = "Biluppgifter saknas. Ett billån finns i årsplaneringen.";
+  }
+
   return (
     <PersonalEconomyCard
       actionLabel="Visa bil"
+      href="/app/bil"
       illustrationAlt="Stilren illustration av en modern familjebil"
-      illustrationSrc="/images/dashboard/car-preview.webp"
-      metrics={[
-        { label: "Billån", value: formatPreviewCurrency(economics.loanPayment) },
-        { label: "Total månadskostnad", value: formatPreviewCurrency(economics.monthlyCost) },
-      ]}
-      summary={getCarPreviewSummary(economics)}
+      illustrationSrc="/images/dashboard/car-preview-neutral.jpg"
+      metrics={metrics.slice(0, 4)}
+      summary={summary}
       title="Bil"
     />
   );
@@ -40,8 +94,9 @@ function SavingsPreview({ source }: { source: SavingsPreviewSource }) {
   return (
     <PersonalEconomyCard
       actionLabel="Visa sparande"
+      href="/app/sparande"
       illustrationAlt="Stilren illustration av en växt, sparbössa och mynt"
-      illustrationSrc="/images/dashboard/savings-preview.webp"
+      illustrationSrc="/images/dashboard/savings-preview-neutral.jpg"
       metrics={[
         { label: "Planerat sparande", value: formatPreviewCurrency(economics.totalPlannedSavings) },
         {
@@ -57,11 +112,13 @@ function SavingsPreview({ source }: { source: SavingsPreviewSource }) {
 }
 
 export function PersonalEconomySection({
-  carPreview,
+  carData,
+  carPlanning,
   housingData,
   savingsPreview,
 }: {
-  carPreview: CarPreviewEconomics;
+  carData: CarData | undefined;
+  carPlanning: CarPlanningEconomics;
   housingData: HousingData | undefined;
   savingsPreview: SavingsPreviewSource;
 }) {
@@ -72,7 +129,7 @@ export function PersonalEconomySection({
     },
     {
       id: "car",
-      preview: <CarPreview economics={carPreview} />,
+      preview: <CarPreview data={carData} planning={carPlanning} />,
     },
     {
       id: "savings",

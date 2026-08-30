@@ -29,6 +29,22 @@ const legacySavingsKeys = [
 
 type MonthValues = Record<string, number>;
 
+export type SavingsOverviewGoal = {
+  averageMonthlySavings: number;
+  id: string;
+  name: string;
+  totalPlannedSavings: number;
+};
+
+export type SavingsOverview = {
+  averageMonthlySavings: number;
+  goals: SavingsOverviewGoal[];
+  monthlyIncome: number[];
+  monthlySavings: number[];
+  savingsRate: number | null;
+  totalPlannedSavings: number;
+};
+
 export type SavingsExpenseItem = {
   category: string;
   frequency?: string;
@@ -48,6 +64,13 @@ export type SavingsPlanningData = {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+};
+
+export type SavingsOverviewPlanningData = SavingsPlanningData & {
+  incomeLineValues?: Partial<Record<string, Partial<MonthValues>>>;
+  incomes: Array<{
+    monthlyValues: MonthValues;
+  }>;
 };
 
 function zeroMonthValues(): MonthValues {
@@ -99,6 +122,48 @@ export function sumSavingsGoalsForMonth(
     (total, item) => total + (item.monthlyValues[monthId] ?? 0),
     0,
   );
+}
+
+export function getSavingsOverview(data: SavingsOverviewPlanningData): SavingsOverview {
+  const sourceGoals = getSavingsGoals(data);
+  const goals = sourceGoals.map((goal) => {
+    const totalPlannedSavings = savingsMonthIds.reduce(
+      (total, monthId) => total + (goal.monthlyValues[monthId] ?? 0),
+      0,
+    );
+
+    return {
+      averageMonthlySavings: totalPlannedSavings / savingsMonthIds.length,
+      id: goal.id,
+      name: savingsItemName(data, goal),
+      totalPlannedSavings,
+    };
+  });
+  const monthlySavings = savingsMonthIds.map((monthId) =>
+    sourceGoals.reduce((total, goal) => total + (goal.monthlyValues[monthId] ?? 0), 0),
+  );
+  const monthlyIncome = savingsMonthIds.map((monthId) => {
+    const storedIncome = data.incomes.reduce(
+      (total, income) => total + (income.monthlyValues[monthId] ?? 0),
+      0,
+    );
+    return ["salaryOne", "salaryTwo", "benefits", "other"].reduce(
+      (total, key) =>
+        total + (data.incomeLineValues?.[key]?.[monthId] ?? (key === "salaryOne" ? storedIncome : 0)),
+      0,
+    );
+  });
+  const totalPlannedSavings = monthlySavings.reduce((total, amount) => total + amount, 0);
+  const totalIncome = monthlyIncome.reduce((total, amount) => total + amount, 0);
+
+  return {
+    averageMonthlySavings: totalPlannedSavings / savingsMonthIds.length,
+    goals,
+    monthlyIncome,
+    monthlySavings,
+    savingsRate: calculateSavingsRate(totalPlannedSavings, totalIncome),
+    totalPlannedSavings,
+  };
 }
 
 export function createSavingsGoal<T extends SavingsPlanningData>(

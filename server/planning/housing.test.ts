@@ -45,6 +45,25 @@ test("housing economics stays empty until the required source values exist", () 
   assert.equal(economics.monthlyMortgageCost, null);
 });
 
+test("partial HousingData only derives figures whose required inputs exist", () => {
+  const interestOnly = calculateHousingEconomics({
+    propertyValue: null,
+    valuationDate: null,
+    totalMortgage: 1_500_000,
+    averageInterestRate: 4,
+    monthlyAmortization: null,
+  });
+
+  assert.equal(interestOnly.loanToValue, null);
+  assert.equal(interestOnly.annualInterestCost, 60_000);
+  assert.equal(interestOnly.monthlyInterestCost, 5_000);
+  assert.equal(interestOnly.monthlyMortgageCost, 5_000);
+  assert.equal(
+    getHousingSummary(interestOnly.loanToValue),
+    "Fyll i bostadsvärde och bolån för att se belåningsgrad och kostnad.",
+  );
+});
+
 test("loan-to-value bands use the approved thresholds", () => {
   assert.equal(getLoanToValueBand(59.9), "green");
   assert.equal(getLoanToValueBand(60), "yellow");

@@ -7,11 +7,16 @@ import {
   currentPlanningYear,
   seedPlanningDataV3,
 } from "../../shared/planning/seed-planning-data.ts";
+import {
+  getCarPlanningEconomics,
+  isCarData,
+  type CarData,
+} from "../../shared/planning/car.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
-import { type CarPreviewEconomics } from "../../shared/planning/personal-economy.ts";
 import {
   createSavingsGoal,
   getSavingsGoals,
+  getSavingsOverview,
   migrateLegacySavingsStructure,
   renameSavingsGoal,
   selectMonthlySavingsMetrics,
@@ -101,6 +106,7 @@ type PlanningData = {
   incomes: Income[];
   expenseCategories: ExpenseCategory[];
   expenseItems: ExpenseItem[];
+  carData?: CarData;
   housingData?: HousingData;
   allocationOverrides?: AllocationOverrides;
   areaItemValues?: AreaItemValues;
@@ -1152,6 +1158,7 @@ function isPlanningData(value: unknown): value is PlanningData {
       }));
   const hasValidHousingData =
     data.housingData === undefined || isHousingData(data.housingData);
+  const hasValidCarData = data.carData === undefined || isCarData(data.carData);
 
   return (
     data.version === 3 &&
@@ -1160,6 +1167,7 @@ function isPlanningData(value: unknown): value is PlanningData {
     hasValidAreaItemValues &&
     hasValidIncomeLineValues &&
     hasValidHousingData &&
+    hasValidCarData &&
     typeof data.openingBalance === "number" &&
     Array.isArray(data.incomes) &&
     Array.isArray(data.expenseCategories) &&
@@ -1536,14 +1544,6 @@ function getItemYearTotal(months: ForecastMonth[], categoryId: string, itemId: s
 
 function getCategoryAmount(month: ForecastMonth, categoryId: string) {
   return month.categories.find((category) => category.id === categoryId)?.amount ?? "0 kr";
-}
-
-function getCategoryItemAmount(month: ForecastMonth, categoryId: string, itemId: string) {
-  return (
-    month.categories
-      .find((category) => category.id === categoryId)
-      ?.items?.find((item) => item.id === itemId)?.amount ?? "0 kr"
-  );
 }
 
 function getBillAccountCategories(month: ForecastMonth) {
@@ -5205,19 +5205,14 @@ export default function Home() {
       }),
     [currentMonth.id, months, planningData],
   );
-  const carPreview: CarPreviewEconomics = {
-    loanPayment: parseAmount(getCategoryItemAmount(currentMonth, "bil", "bil-billan")),
-    monthlyCost: parseAmount(getCategoryAmount(currentMonth, "bil")),
-    monthlyIncome: parseAmount(currentMonth.income),
-  };
+  const carPlanning = useMemo(
+    () => getCarPlanningEconomics(planningData, currentMonth.id),
+    [currentMonth.id, planningData],
+  );
+  const savingsOverview = useMemo(() => getSavingsOverview(planningData), [planningData]);
   const savingsPreview = {
-    monthlyIncome: months.map((month) => parseAmount(month.income)),
-    monthlySavings: months.map((month) =>
-      Object.values(month.savingsGoalValues ?? {}).reduce(
-        (total, amount) => total + parseAmount(amount),
-        0,
-      ),
-    ),
+    monthlyIncome: savingsOverview.monthlyIncome,
+    monthlySavings: savingsOverview.monthlySavings,
   };
 
   const categoryOptions = useMemo(
@@ -5756,7 +5751,8 @@ export default function Home() {
       </div>
 
       <PersonalEconomySection
-        carPreview={carPreview}
+        carData={planningData.carData}
+        carPlanning={carPlanning}
         housingData={planningData.housingData}
         savingsPreview={savingsPreview}
       />

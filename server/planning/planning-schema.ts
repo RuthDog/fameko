@@ -1,3 +1,4 @@
+import { isCarData } from "../../shared/planning/car.ts";
 import { isHousingData } from "../../shared/planning/housing.ts";
 
 const monthIds = [
@@ -176,6 +177,7 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
       "incomeLineValues",
       "labels",
       "housingData",
+      "carData",
     ])
   ) {
     return false;
@@ -197,7 +199,8 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
     isOptionalValueMap(value.areaItemValues, areaItemKeys) &&
     isOptionalValueMap(value.incomeLineValues, incomeLineKeys) &&
     hasValidLabels(value.labels) &&
-    (value.housingData === undefined || isHousingData(value.housingData))
+    (value.housingData === undefined || isHousingData(value.housingData)) &&
+    (value.carData === undefined || isCarData(value.carData))
   );
 }
 

@@ -7,6 +7,7 @@ import {
   calculateSavingsRate,
   createSavingsGoal,
   getSavingsGoals,
+  getSavingsOverview,
   migrateLegacySavingsStructure,
   renameSavingsGoal,
   selectMonthlySavingsMetrics,
@@ -115,4 +116,10 @@ test("Savings Preview includes every standard and custom saving goal", () => {
 
   assert.equal(preview.totalPlannedSavings, 77_000);
   assert.equal(preview.averageMonthlySavings, 77_000 / 12);
+
+  const overview = getSavingsOverview(withCustomValues);
+  assert.equal(overview.totalPlannedSavings, 77_000);
+  assert.equal(overview.averageMonthlySavings, 77_000 / 12);
+  assert.equal(overview.savingsRate?.toFixed(1), "11.7");
+  assert.equal(overview.goals.some((goal) => goal.name === "Renovering"), true);
 });

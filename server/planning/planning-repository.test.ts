@@ -18,6 +18,15 @@ const housingData = {
   averageInterestRate: 3.68,
   monthlyAmortization: 2_400,
 };
+const carData = {
+  annualInsurance: 7_200,
+  annualService: 6_000,
+  averageInterestRate: 4.2,
+  carName: "Familjebilen",
+  carValue: 285_000,
+  currentLoanBalance: 185_000,
+  monthlyAmortization: 2_500,
+};
 
 function createPlanningData(openingBalance = 10_000) {
   const monthlyValues = Object.fromEntries(monthIds.map((monthId) => [monthId, 1_000]));
@@ -75,6 +84,7 @@ test("PlanningData v3 validation accepts the complete Workspace shape", () => {
   assert.equal(isPlanningData(seedPlanningDataV3), true);
   assert.equal(isPlanningData(createPlanningData()), true);
   assert.equal(isPlanningData({ ...createPlanningData(), housingData }), true);
+  assert.equal(isPlanningData({ ...createPlanningData(), carData }), true);
   assert.equal(
     isPlanningData({
       ...createPlanningData(),
@@ -87,6 +97,35 @@ test("PlanningData v3 validation accepts the complete Workspace shape", () => {
     isPlanningData({ ...createPlanningData(), openingBalance: Number.POSITIVE_INFINITY }),
     false,
   );
+});
+
+test("HousingData and CarData round-trip in the same authoritative PlanningData document", async () => {
+  const { database, miniflare } = await createDatabase();
+
+  try {
+    const repository = new PlanningRepository(database);
+    const data = { ...createPlanningData(), housingData, carData };
+    const created = await repository.create("household-a", 2026, data, 3);
+    assert.ok(created);
+
+    const stored = await repository.get("household-a", 2026);
+    assert.deepEqual(stored?.data.housingData, housingData);
+    assert.deepEqual(stored?.data.carData, carData);
+
+    const updatedCarData = { ...carData, currentLoanBalance: 0 };
+    const updated = await repository.update(
+      "household-a",
+      2026,
+      created.revision,
+      { ...data, carData: updatedCarData },
+      3,
+    );
+    assert.equal(updated?.revision, 2);
+    assert.deepEqual(updated?.data.housingData, housingData);
+    assert.deepEqual(updated?.data.carData, updatedCarData);
+  } finally {
+    await miniflare.dispose();
+  }
 });
 
 test("HousingData round-trips inside authoritative PlanningData", async () => {

@@ -135,7 +135,7 @@ export function getHousingSummary(loanToValue: number | null) {
   const band = getLoanToValueBand(loanToValue);
 
   if (band === null) {
-    return "Fyll i bostadsvärde och bolån för att se bostadens ekonomiska motståndskraft.";
+    return "Fyll i bostadsvärde och bolån för att se belåningsgrad och kostnad.";
   }
 
   if (band === "green") {
