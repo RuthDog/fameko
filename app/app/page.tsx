@@ -12,6 +12,14 @@ import {
   isCarData,
   type CarData,
 } from "../../shared/planning/car.ts";
+import {
+  applyScopedMonthValue,
+  getAffectedMonthIds,
+  getEffectiveExpenseCategoryAmount,
+  getEffectiveExpenseCategoryTotals,
+  getEffectiveExpenseItemAmount,
+  type PlanningEditScope,
+} from "../../shared/planning/effective-values.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
 import {
   createSavingsGoal,
@@ -37,7 +45,7 @@ import {
 } from "../../shared/workspace/save-experience.ts";
 
 type Status = "green" | "yellow" | "red";
-type ChangeScope = "single" | "future";
+type ChangeScope = PlanningEditScope;
 type ExpenseFrequency =
   | "once"
   | "monthly"
@@ -778,9 +786,10 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
     );
     const categories = sortedCategories.map((category) => {
       const items = data.expenseItems.filter((item) => item.category === category.id);
-      const categoryTotal = items.reduce(
-        (total, item) => total + (item.monthlyValues[metadata.id] ?? 0),
-        0,
+      const categoryTotal = getEffectiveExpenseCategoryAmount(
+        data,
+        category.id,
+        metadata.id,
       );
       const primaryItemId = `${category.id}-${category.id}`;
       const shouldShowItems = items.length > 1 || items.some((item) => item.id !== primaryItemId);
@@ -794,7 +803,9 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
           ? items.map((item) => ({
               id: item.id,
               name: data.labels?.expenseItems?.[item.id] ?? item.name,
-              amount: formatAmount(item.monthlyValues[metadata.id] ?? 0),
+              amount: formatAmount(
+                getEffectiveExpenseItemAmount(data, item, metadata.id),
+              ),
             }))
           : undefined,
       };
@@ -854,16 +865,6 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
   });
 }
 
-function getAffectedMonthIds(targetMonthId: string, scope: ChangeScope) {
-  const targetIndex = monthIds.indexOf(targetMonthId);
-
-  if (targetIndex < 0) {
-    return [];
-  }
-
-  return scope === "single" ? [monthIds[targetIndex]] : monthIds.slice(targetIndex);
-}
-
 function getFrequencyMonthIds(targetMonthId: string, frequency: ExpenseFrequency) {
   const targetIndex = monthIds.indexOf(targetMonthId);
 
@@ -890,7 +891,6 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
   }
 
   if (target.type === "incomeLine") {
-    const affectedMonthIds = getAffectedMonthIds(target.monthId, scope);
     const currentValues = data.incomeLineValues?.[target.incomeLineKey] ?? {};
 
     return {
@@ -898,9 +898,12 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
       incomeLineValues: {
         ...data.incomeLineValues,
         [target.incomeLineKey]: {
-          ...currentValues,
-          ...Object.fromEntries(
-            affectedMonthIds.map((monthId) => [monthId, parseAmount(nextAmount)]),
+          ...applyScopedMonthValue(
+            currentValues,
+            monthIds,
+            target.monthId,
+            parseAmount(nextAmount),
+            scope,
           ),
         },
       },
@@ -908,7 +911,6 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
   }
 
   if (target.type === "allocation") {
-    const affectedMonthIds = getAffectedMonthIds(target.monthId, scope);
     const currentValues = data.allocationOverrides?.[target.allocationKey] ?? {};
 
     return {
@@ -916,9 +918,12 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
       allocationOverrides: {
         ...data.allocationOverrides,
         [target.allocationKey]: {
-          ...currentValues,
-          ...Object.fromEntries(
-            affectedMonthIds.map((monthId) => [monthId, parseAmount(nextAmount)]),
+          ...applyScopedMonthValue(
+            currentValues,
+            monthIds,
+            target.monthId,
+            parseAmount(nextAmount),
+            scope,
           ),
         },
       },
@@ -926,7 +931,6 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
   }
 
   if (target.type === "areaItem") {
-    const affectedMonthIds = getAffectedMonthIds(target.monthId, scope);
     const currentValues = data.areaItemValues?.[target.areaItemKey] ?? {};
 
     return {
@@ -934,9 +938,12 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
       areaItemValues: {
         ...data.areaItemValues,
         [target.areaItemKey]: {
-          ...currentValues,
-          ...Object.fromEntries(
-            affectedMonthIds.map((monthId) => [monthId, parseAmount(nextAmount)]),
+          ...applyScopedMonthValue(
+            currentValues,
+            monthIds,
+            target.monthId,
+            parseAmount(nextAmount),
+            scope,
           ),
         },
       },
@@ -949,7 +956,7 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
     return data;
   }
 
-  const affectedMonthIds = getAffectedMonthIds(target.monthId, scope);
+  const affectedMonthIds = getAffectedMonthIds(monthIds, target.monthId, scope);
 
   if (target.type === "item") {
     return {
@@ -958,10 +965,13 @@ function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmou
         item.id === target.itemId
           ? {
               ...item,
-              monthlyValues: {
-                ...item.monthlyValues,
-                ...Object.fromEntries(affectedMonthIds.map((monthId) => [monthId, parseAmount(nextAmount)])),
-              },
+              monthlyValues: applyScopedMonthValue(
+                item.monthlyValues,
+                monthIds,
+                target.monthId,
+                parseAmount(nextAmount),
+                scope,
+              ),
             }
           : item,
       ),
@@ -1497,7 +1507,7 @@ function getCategoryYearTotal(months: ForecastMonth[], categoryId: string) {
   );
 }
 
-function getLargestCosts(months: ForecastMonth[]): LargestCost[] {
+function getLargestCosts(data: PlanningData): LargestCost[] {
   const categoryIcons: Record<string, string> = {
     bil: "🚗",
     boende: "🏠",
@@ -1507,13 +1517,8 @@ function getLargestCosts(months: ForecastMonth[]): LargestCost[] {
     streaming: "📺",
     ovrigt: "•••",
   };
-  const categories = (months[0]?.categories ?? [])
-    .filter((category) => category.id && category.id !== "sparande")
-    .map((category) => ({
-      id: category.id!,
-      name: category.name,
-      total: parseAmount(getCategoryYearTotal(months, category.id!)),
-    }))
+  const categories = getEffectiveExpenseCategoryTotals(data, monthIds)
+    .filter((category) => category.id !== "sparande")
     .filter((category) => category.total > 0);
   const totalCosts = categories.reduce((total, category) => total + category.total, 0);
 
@@ -5183,7 +5188,7 @@ export default function Home() {
   );
 
   const months = useMemo(() => buildForecastMonths(planningData), [planningData]);
-  const largestCosts = useMemo(() => getLargestCosts(months), [months]);
+  const largestCosts = useMemo(() => getLargestCosts(planningData), [planningData]);
   const labels = useMemo(() => getResolvedPlanningLabels(planningData), [planningData]);
   const savingsGoals = useMemo(
     () =>

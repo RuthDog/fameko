@@ -1,3 +1,8 @@
+import {
+  getEffectiveExpenseItemAmount,
+  type EffectiveExpensePlanningSource,
+} from "./effective-values.ts";
+
 export type MobileInsightFrequency =
   | "once"
   | "monthly"
@@ -6,7 +11,10 @@ export type MobileInsightFrequency =
   | "twiceYearly"
   | "yearly";
 
-export type MobileInsightsPlanningSource = {
+export type MobileInsightsPlanningSource = EffectiveExpensePlanningSource & {
+  allocationOverrides?: {
+    food?: Partial<Record<string, number>>;
+  };
   expenseCategories?: Array<{
     id: string;
     name: string;
@@ -106,7 +114,7 @@ function getPlannedCosts(
   const groupedCosts = new Map<string, PlannedCost>();
 
   for (const item of planningData.expenseItems) {
-    const amount = item.monthlyValues[monthId] ?? 0;
+    const amount = getEffectiveExpenseItemAmount(planningData, item, monthId);
 
     if (amount <= 0 || item.category === "sparande") {
       continue;
@@ -168,18 +176,24 @@ export function buildMobileUpcomingInsights({
     const events: RankedInsightEvent[] = [];
 
     for (const item of planningData.expenseItems) {
-      const amount = item.monthlyValues[month.id] ?? 0;
+      const amount = getEffectiveExpenseItemAmount(planningData, item, month.id);
       const previousAmount =
-        monthIndex > 0 ? item.monthlyValues[monthIds[monthIndex - 1]] ?? 0 : 0;
+        monthIndex > 0
+          ? getEffectiveExpenseItemAmount(
+              planningData,
+              item,
+              monthIds[monthIndex - 1],
+            )
+          : 0;
       const priorAmounts = monthIds
         .slice(0, Math.max(monthIndex, 0))
-        .map((monthId) => item.monthlyValues[monthId] ?? 0);
+        .map((monthId) => getEffectiveExpenseItemAmount(planningData, item, monthId));
       const futureAmounts = monthIds
         .slice(monthIndex + 1)
-        .map((monthId) => item.monthlyValues[monthId] ?? 0);
+        .map((monthId) => getEffectiveExpenseItemAmount(planningData, item, monthId));
       const otherPositiveAmounts = monthIds
         .filter((monthId) => monthId !== month.id)
-        .map((monthId) => item.monthlyValues[monthId] ?? 0)
+        .map((monthId) => getEffectiveExpenseItemAmount(planningData, item, monthId))
         .filter((value) => value > 0);
       const label = planningData.labels?.expenseItems?.[item.id] ?? item.name;
       const futureStartsLikeMonthlyCost =
@@ -206,7 +220,7 @@ export function buildMobileUpcomingInsights({
 
       const recentPriorAmounts = monthIds
         .slice(Math.max(0, monthIndex - 3), monthIndex)
-        .map((monthId) => item.monthlyValues[monthId] ?? 0);
+        .map((monthId) => getEffectiveExpenseItemAmount(planningData, item, monthId));
       const isRegularCost =
         item.frequency === "monthly" ||
         (recentPriorAmounts.length >= 2 && recentPriorAmounts.every((value) => value > 0));

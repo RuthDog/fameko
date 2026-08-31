@@ -10,6 +10,7 @@ import {
   type HousingData,
   type LoanToValueBand,
 } from "../../shared/planning/housing.ts";
+import { getHousingPreviewStatus } from "../../shared/planning/personal-economy-status.ts";
 import {
   formatPreviewCurrency,
   formatPreviewPercentage,
@@ -82,20 +83,13 @@ function HousingNumberField({
 export function HousingPreview({ data }: { data: HousingData | undefined }) {
   const housing = data ?? emptyHousingData;
   const economics = calculateHousingEconomics(housing);
-  const loanToValueBand = getLoanToValueBand(economics.loanToValue);
   const metrics = [
     economics.loanToValue === null
       ? null
       : {
-          indicatorClassName: loanToValueBand
-            ? loanToValueColors[loanToValueBand]
-            : undefined,
           label: "Belåningsgrad",
           value: formatPreviewPercentage(economics.loanToValue),
         },
-    housing.totalMortgage === null
-      ? null
-      : { label: "Bolån", value: formatPreviewCurrency(housing.totalMortgage) },
     economics.monthlyMortgageCost === null
       ? null
       : {
@@ -111,7 +105,7 @@ export function HousingPreview({ data }: { data: HousingData | undefined }) {
       illustrationAlt="Stilren illustration av ett modernt nordiskt hus"
       illustrationSrc="/images/dashboard/housing-home-neutral.jpg"
       metrics={metrics}
-      summary={getHousingSummary(economics.loanToValue)}
+      status={getHousingPreviewStatus(data)}
       title="Boende"
     />
   );

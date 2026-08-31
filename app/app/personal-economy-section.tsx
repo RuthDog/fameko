@@ -6,8 +6,12 @@ import {
 import { type HousingData } from "../../shared/planning/housing.ts";
 import {
   calculateSavingsPreview,
-  getSavingsPreviewSummary,
 } from "../../shared/planning/personal-economy.ts";
+import {
+  getAnnualCarOperatingCost,
+  getCarPreviewStatus,
+  getSavingsPreviewStatus,
+} from "../../shared/planning/personal-economy-status.ts";
 import { HousingPreview } from "./housing-overview.tsx";
 import {
   formatPreviewCurrency,
@@ -31,17 +35,7 @@ function CarPreview({
 }) {
   const loanMode = getCarLoanMode(data);
   const metrics: PersonalEconomyMetric[] = [];
-
-  if (loanMode === "withLoan") {
-    metrics.push({ label: "Billån", value: formatPreviewCurrency(data?.currentLoanBalance ?? null) });
-  } else if (loanMode === "loanFree") {
-    metrics.push({ label: "Lån", value: "Lånefri" });
-  } else if (planning.hasPlannedLoan && planning.monthlyPlannedLoanPayment > 0) {
-    metrics.push({
-      label: "Billån i planeringen",
-      value: formatPreviewCurrency(planning.monthlyPlannedLoanPayment),
-    });
-  }
+  const annualOperatingCost = getAnnualCarOperatingCost(data);
 
   if (planning.monthlyPlannedCost > 0) {
     metrics.push({
@@ -50,29 +44,16 @@ function CarPreview({
     });
   }
 
-  if (data?.annualInsurance !== null && data?.annualInsurance !== undefined) {
+  if (loanMode === "withLoan") {
     metrics.push({
-      label: "Försäkring / år",
-      value: formatPreviewCurrency(data.annualInsurance),
+      label: "Låneskuld",
+      value: formatPreviewCurrency(data?.currentLoanBalance ?? null),
     });
-  }
-
-  if (data?.annualService !== null && data?.annualService !== undefined) {
+  } else if (annualOperatingCost !== null) {
     metrics.push({
-      label: "Service / år",
-      value: formatPreviewCurrency(data.annualService),
+      label: "Årlig drift",
+      value: formatPreviewCurrency(annualOperatingCost),
     });
-  }
-
-  let summary = "Biluppgifter saknas";
-  if (loanMode === "loanFree") {
-    summary = "Bilen är registrerad som lånefri.";
-  } else if (loanMode === "withLoan") {
-    summary = "Billånet och månadens planerade bilkostnad visas från sina respektive källor.";
-  } else if (data) {
-    summary = "Komplettera låneskulden för att visa om bilen har lån eller är lånefri.";
-  } else if (planning.hasPlannedLoan) {
-    summary = "Biluppgifter saknas. Ett billån finns i årsplaneringen.";
   }
 
   return (
@@ -81,8 +62,8 @@ function CarPreview({
       href="/app/bil"
       illustrationAlt="Stilren illustration av en modern familjebil"
       illustrationSrc="/images/dashboard/car-preview-neutral.jpg"
-      metrics={metrics.slice(0, 4)}
-      summary={summary}
+      metrics={metrics}
+      status={getCarPreviewStatus(data)}
       title="Bil"
     />
   );
@@ -98,14 +79,13 @@ function SavingsPreview({ source }: { source: SavingsPreviewSource }) {
       illustrationAlt="Stilren illustration av en växt, sparbössa och mynt"
       illustrationSrc="/images/dashboard/savings-preview-neutral.jpg"
       metrics={[
-        { label: "Planerat sparande", value: formatPreviewCurrency(economics.totalPlannedSavings) },
         {
           label: "Snitt per månad",
           value: formatPreviewCurrency(economics.averageMonthlySavings),
         },
         { label: "Sparkvot", value: formatPreviewPercentage(economics.savingsRate) },
       ]}
-      summary={getSavingsPreviewSummary(economics, source.monthlySavings.length)}
+      status={getSavingsPreviewStatus(economics)}
       title="Sparande"
     />
   );

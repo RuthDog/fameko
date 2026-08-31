@@ -3,12 +3,38 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import type { PersonalEconomyStatus } from "../../shared/planning/personal-economy-status.ts";
 import { mobileTypography } from "./mobile-design-system.ts";
 
 export type PersonalEconomyMetric = {
-  indicatorClassName?: string;
   label: string;
   value: string;
+};
+
+const statusStyles: Record<
+  PersonalEconomyStatus["tone"],
+  { background: string; dot: string; label: string }
+> = {
+  attention: {
+    background: "bg-amber-50/80",
+    dot: "bg-amber-400",
+    label: "text-amber-950",
+  },
+  review: {
+    background: "bg-rose-50/80",
+    dot: "bg-rose-500",
+    label: "text-rose-950",
+  },
+  stable: {
+    background: "bg-emerald-50/70",
+    dot: "bg-emerald-500",
+    label: "text-emerald-950",
+  },
+  unknown: {
+    background: "bg-stone-100/80",
+    dot: "bg-stone-400",
+    label: "text-stone-800",
+  },
 };
 
 const currencyFormatter = new Intl.NumberFormat("sv-SE", {
@@ -34,7 +60,7 @@ export function PersonalEconomyCard({
   illustrationAlt,
   illustrationSrc,
   metrics,
-  summary,
+  status,
   title,
 }: {
   actionLabel: string;
@@ -42,12 +68,12 @@ export function PersonalEconomyCard({
   illustrationAlt: string;
   illustrationSrc: string;
   metrics: PersonalEconomyMetric[];
-  summary: string;
+  status: PersonalEconomyStatus;
   title: string;
 }) {
   const titleId = `personal-economy-${title.toLocaleLowerCase("sv-SE")}`;
-  const metricColumns =
-    metrics.length === 2 ? "grid-cols-2" : metrics.length === 4 ? "grid-cols-2" : "grid-cols-3";
+  const displayedMetrics = metrics.slice(0, 2);
+  const statusStyle = statusStyles[status.tone];
 
   return (
     <Link
@@ -70,38 +96,29 @@ export function PersonalEconomyCard({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col p-5 sm:p-6">
-          <div>
-            <h3
-              className={`${mobileTypography.sectionTitle} text-stone-950 lg:text-xl lg:leading-7 lg:tracking-[-0.025em]`}
-              id={titleId}
-            >
-              {title}
-            </h3>
-            <p
-              className={`mt-2 min-h-12 ${mobileTypography.metadata} text-stone-500 lg:text-sm lg:leading-6`}
-            >
-              {summary}
+          <h3
+            className={`${mobileTypography.sectionTitle} text-stone-950 lg:text-xl lg:leading-7 lg:tracking-[-0.025em]`}
+            id={titleId}
+          >
+            {title}
+          </h3>
+
+          <div className={`mt-4 rounded-[16px] px-4 py-3 ${statusStyle.background}`}>
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${statusStyle.dot}`} />
+              <p className={`${mobileTypography.metadata} font-medium text-stone-500`}>Status</p>
+            </div>
+            <p className={`mt-1.5 text-lg font-semibold tracking-[-0.025em] ${statusStyle.label}`}>
+              {status.label}
             </p>
+            <p className={`mt-1 ${mobileTypography.metadata} text-stone-500`}>{status.message}</p>
           </div>
 
-          {metrics.length ? (
-            <dl
-              className={`mt-4 grid ${metricColumns} gap-y-3 divide-x divide-stone-200/80 border-t border-stone-200/80 pt-4`}
-            >
-              {metrics.map((metric, index) => (
-                <div
-                  className={`min-w-0 ${index === 0 ? "pr-3" : "px-3 last:pr-0"}`}
-                  key={metric.label}
-                >
-                  <dt
-                    className={`flex min-h-8 items-start gap-1.5 ${mobileTypography.metadata} text-stone-400 lg:text-[11px] lg:leading-4`}
-                  >
-                    {metric.indicatorClassName ? (
-                      <span
-                        aria-hidden="true"
-                        className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${metric.indicatorClassName}`}
-                      />
-                    ) : null}
+          {displayedMetrics.length ? (
+            <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-stone-200/80 pt-4">
+              {displayedMetrics.map((metric) => (
+                <div className="min-w-0" key={metric.label}>
+                  <dt className={`${mobileTypography.metadata} text-stone-400 lg:text-[11px] lg:leading-4`}>
                     {metric.label}
                   </dt>
                   <dd
