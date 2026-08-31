@@ -61,7 +61,7 @@ export function SavingsOverview({
             className="object-contain p-5 sm:p-8 lg:p-10"
             fill
             sizes="(max-width: 1023px) calc(100vw - 48px), min(660px, 42vw)"
-            src="/images/dashboard/savings-preview-neutral.jpg"
+            src="/images/dashboard/savings-preview-neutral.png"
             unoptimized
           />
         </div>

@@ -77,7 +77,7 @@ function SavingsPreview({ source }: { source: SavingsPreviewSource }) {
       actionLabel="Visa sparande"
       href="/app/sparande"
       illustrationAlt="Stilren illustration av en växt, sparbössa och mynt"
-      illustrationSrc="/images/dashboard/savings-preview-neutral.jpg"
+      illustrationSrc="/images/dashboard/savings-preview-neutral.png"
       metrics={[
         {
           label: "Snitt per månad",

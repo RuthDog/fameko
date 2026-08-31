@@ -82,12 +82,12 @@ export function PersonalEconomyCard({
     >
       <article
         aria-labelledby={titleId}
-        className="flex h-[400px] min-w-0 flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white shadow-[0_14px_42px_rgba(28,25,23,0.035)] transition group-hover:border-stone-300 group-hover:shadow-[0_18px_48px_rgba(28,25,23,0.06)] lg:h-[440px]"
+        className="flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white shadow-[0_14px_42px_rgba(28,25,23,0.035)] transition group-hover:border-stone-300 group-hover:shadow-[0_18px_48px_rgba(28,25,23,0.06)] lg:h-[440px]"
       >
-        <div className="relative h-28 shrink-0 overflow-hidden bg-[#f1efe8] lg:h-44">
+        <div className="relative h-24 shrink-0 overflow-hidden bg-[#f1efe8] lg:h-44">
           <Image
             alt={illustrationAlt}
-            className="object-contain p-4"
+            className="object-contain p-3 lg:p-4"
             fill
             sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1279px) calc(50vw - 34px), calc(33vw - 34px)"
             src={illustrationSrc}
@@ -95,7 +95,7 @@ export function PersonalEconomyCard({
           />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col p-5 sm:p-6">
+        <div className="flex min-h-0 flex-1 flex-col px-5 py-4 sm:px-6 sm:py-5 lg:p-6">
           <h3
             className={`${mobileTypography.sectionTitle} text-stone-950 lg:text-xl lg:leading-7 lg:tracking-[-0.025em]`}
             id={titleId}
@@ -103,19 +103,25 @@ export function PersonalEconomyCard({
             {title}
           </h3>
 
-          <div className={`mt-4 rounded-[16px] px-4 py-3 ${statusStyle.background}`}>
+          <div
+            className={`mt-3 rounded-[16px] px-4 py-2.5 lg:mt-4 lg:py-3 ${statusStyle.background}`}
+          >
             <div className="flex items-center gap-2">
               <span aria-hidden="true" className={`h-2 w-2 rounded-full ${statusStyle.dot}`} />
               <p className={`${mobileTypography.metadata} font-medium text-stone-500`}>Status</p>
             </div>
-            <p className={`mt-1.5 text-lg font-semibold tracking-[-0.025em] ${statusStyle.label}`}>
+            <p
+              className={`mt-1 text-lg font-semibold tracking-[-0.025em] lg:mt-1.5 ${statusStyle.label}`}
+            >
               {status.label}
             </p>
-            <p className={`mt-1 ${mobileTypography.metadata} text-stone-500`}>{status.message}</p>
+            <p className={`mt-0.5 ${mobileTypography.metadata} text-stone-500 lg:mt-1`}>
+              {status.message}
+            </p>
           </div>
 
           {displayedMetrics.length ? (
-            <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-stone-200/80 pt-4">
+            <dl className="mt-3 grid grid-cols-2 gap-4 border-t border-stone-200/80 pt-3 lg:mt-4 lg:pt-4">
               {displayedMetrics.map((metric) => (
                 <div className="min-w-0" key={metric.label}>
                   <dt className={`${mobileTypography.metadata} text-stone-400 lg:text-[11px] lg:leading-4`}>
@@ -132,7 +138,7 @@ export function PersonalEconomyCard({
           ) : null}
 
           <span
-            className={`mt-auto pt-4 ${mobileTypography.metadata} text-stone-500 transition group-hover:text-stone-900 lg:text-xs lg:font-medium lg:leading-4`}
+            className={`mt-auto pt-3 ${mobileTypography.metadata} text-stone-500 transition group-hover:text-stone-900 lg:pt-4 lg:text-xs lg:font-medium lg:leading-4`}
           >
             {actionLabel} <span aria-hidden="true">→</span>
           </span>
