@@ -6,6 +6,10 @@ import { isCarData, type CarData } from "../../shared/planning/car.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
 import { currentPlanningYear } from "../../shared/planning/seed-planning-data.ts";
 import { migrateLegacySavingsStructure } from "../../shared/planning/savings.ts";
+import {
+  hasUnsavedWorkspaceChanges,
+  type WorkspaceSaveOperationState,
+} from "../../shared/workspace/save-experience.ts";
 
 type DetailIncome = {
   id: string;
@@ -61,7 +65,7 @@ class PlanningDetailApiError extends Error {
 }
 
 export type DetailLoadState = "error" | "loading" | "ready";
-export type DetailSaveState = "conflict" | "error" | "idle" | "saved" | "saving";
+export type DetailSaveState = WorkspaceSaveOperationState;
 
 const storageKey = "fameko.planning-data.v3";
 
@@ -202,11 +206,11 @@ export function usePlanningDetail() {
   }, []);
 
   const currentSnapshot = useMemo(() => (data ? JSON.stringify(data) : null), [data]);
-  const hasChanges =
-    loadState === "ready" &&
-    savedSnapshot !== null &&
-    currentSnapshot !== null &&
-    currentSnapshot !== savedSnapshot;
+  const hasChanges = hasUnsavedWorkspaceChanges(
+    loadState === "ready",
+    savedSnapshot,
+    currentSnapshot,
+  );
 
   const updateData = useCallback((updater: (current: DetailPlanningData) => DetailPlanningData) => {
     setData((current) => (current ? updater(current) : current));

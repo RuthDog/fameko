@@ -3,6 +3,10 @@ import type { ReactNode } from "react";
 
 import { mobileTypography } from "./mobile-design-system.ts";
 import type { DetailLoadState, DetailSaveState } from "./use-planning-detail.ts";
+import {
+  WorkspaceSaveButton,
+  WorkspaceSaveStatusBar,
+} from "./workspace-save-controls.tsx";
 
 export function DetailPageShell({
   children,
@@ -31,21 +35,20 @@ export function DetailPageShell({
             Fameko
           </Link>
           <div className="flex items-center gap-3">
-            {message ? (
-              <span className="hidden text-xs text-stone-500 sm:inline" role="status">
-                {message}
-              </span>
-            ) : null}
-            <button
-              className="min-h-10 rounded-full bg-stone-900 px-5 text-sm font-semibold text-white transition enabled:hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300"
+            <WorkspaceSaveButton
               disabled={!hasChanges || loadState !== "ready" || saveState === "saving"}
-              onClick={onSave}
-              type="button"
-            >
-              {saveState === "saving" ? "Sparar…" : "Spara"}
-            </button>
+              hasUnsavedChanges={hasChanges}
+              onSave={onSave}
+              operationState={saveState}
+            />
           </div>
         </div>
+        <WorkspaceSaveStatusBar
+          hasUnsavedChanges={hasChanges}
+          message={message}
+          operationState={saveState}
+          ready={loadState === "ready"}
+        />
       </header>
 
       <div className="mx-auto w-full max-w-[1560px] px-4 pb-16 pt-7 sm:px-6 sm:pt-10 lg:px-8 lg:pb-24 lg:pt-12">
@@ -62,11 +65,6 @@ export function DetailPageShell({
           <p className="mt-3 text-sm leading-6 text-stone-500 sm:text-[15px] sm:leading-7">
             {description}
           </p>
-          {message ? (
-            <p className="mt-3 text-xs text-stone-500 sm:hidden" role="status">
-              {message}
-            </p>
-          ) : null}
         </div>
 
         {loadState === "loading" ? (

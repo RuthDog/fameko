@@ -27,6 +27,14 @@ import {
 } from "../../shared/planning/mobile-insights.ts";
 import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 import { PersonalEconomySection } from "./personal-economy-section.tsx";
+import {
+  WorkspaceSaveButton,
+  WorkspaceSaveStatusBar,
+} from "./workspace-save-controls.tsx";
+import {
+  hasUnsavedWorkspaceChanges,
+  type WorkspaceSaveOperationState,
+} from "../../shared/workspace/save-experience.ts";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = "single" | "future";
@@ -123,7 +131,7 @@ type CloudPlanningYear = {
 };
 
 type CloudLoadState = "loading" | "import" | "ready" | "error";
-type CloudSaveState = "idle" | "saving" | "saved" | "error" | "conflict";
+type CloudSaveState = WorkspaceSaveOperationState;
 
 type ForecastExpenseItem = {
   id?: string;
@@ -5168,8 +5176,11 @@ export default function Home() {
   }, [planningData, cloudLoadState]);
 
   const currentSnapshot = JSON.stringify(planningData);
-  const hasUnsavedChanges =
-    cloudLoadState === "ready" && savedSnapshot !== null && currentSnapshot !== savedSnapshot;
+  const hasUnsavedChanges = hasUnsavedWorkspaceChanges(
+    cloudLoadState === "ready",
+    savedSnapshot,
+    currentSnapshot,
+  );
 
   const months = useMemo(() => buildForecastMonths(planningData), [planningData]);
   const largestCosts = useMemo(() => getLargestCosts(months), [months]);
@@ -5602,12 +5613,6 @@ export default function Home() {
             <p className="text-base font-semibold leading-none text-[#1d252d]">Fameko</p>
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <p className="hidden max-w-72 text-right text-xs text-stone-500 sm:block" role="status">
-              {hasUnsavedChanges &&
-              (cloudSaveState === "idle" || cloudSaveState === "saved")
-                ? "Osparade ändringar"
-                : cloudMessage}
-            </p>
             {showDevelopmentReset ? (
               <button
                 className="hidden rounded-md px-2 py-1 text-xs text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 md:block"
@@ -5617,22 +5622,26 @@ export default function Home() {
                 Återställ testdata
               </button>
             ) : null}
-            <button
-              className="min-h-9 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+            <WorkspaceSaveButton
               disabled={
                 cloudLoadState !== "ready" ||
                 !hasUnsavedChanges ||
                 cloudSaveState === "saving" ||
                 cloudSaveState === "conflict"
               }
-              onClick={() => void saveToCloud()}
-              type="button"
-            >
-              {cloudSaveState === "saving" ? "Sparar…" : "Spara"}
-            </button>
+              hasUnsavedChanges={hasUnsavedChanges}
+              onSave={() => void saveToCloud()}
+              operationState={cloudSaveState}
+            />
           </div>
         </div>
       </header>
+      <WorkspaceSaveStatusBar
+        hasUnsavedChanges={hasUnsavedChanges}
+        message={cloudMessage}
+        operationState={cloudSaveState}
+        ready={cloudLoadState === "ready"}
+      />
 
       <section
         aria-labelledby="workspace-hero-title"
