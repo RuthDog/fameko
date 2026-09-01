@@ -62,6 +62,28 @@ test("mobile insights follow the product priority from new costs to unusual cost
   assert.match(insights[0].events[2].detail ?? "", /Dags att se över priset/);
 });
 
+test("concrete insight events expose their item label for shared brand recognition", () => {
+  const insights = buildMobileUpcomingInsights({
+    currentMonthId: "jan",
+    monthIds,
+    months: steadyMonths,
+    planningData: {
+      expenseItems: [
+        {
+          frequency: "monthly",
+          id: "telia-mobile",
+          monthlyValues: { jan: 0, feb: 699, mar: 699, apr: 699, maj: 699 },
+          name: "Telia",
+          recurring: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(insights[0].events[0].title, "Telia börjar.");
+  assert.equal(insights[0].events[0].itemLabel, "Telia");
+});
+
 test("calm months show the four largest planned cost categories instead of a stable message", () => {
   const insights = buildMobileUpcomingInsights({
     currentMonthId: "jan",
@@ -153,6 +175,7 @@ test("calm months show the four largest planned cost categories instead of a sta
         ["Övrigt", "4 000 kr"],
       ],
     );
+    assert.equal(insight.events.every((event) => event.itemLabel === undefined), true);
   }
 
   const renderedContent = JSON.stringify(insights);

@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 
 import { CurrencyInput } from "../components/currency-input.tsx";
+import { RecognizedBrandLogo } from "../components/brand-logo.tsx";
 import {
   getGuidedSetupExpense,
   getGuidedSetupCurrentMonthId,
@@ -213,7 +214,10 @@ function TemplateQuestion({
       <GuidedSetupFrame eyebrow={guidedSetupGuides.find((guide) => guide.id === template.guideId)?.name ?? "Guided setup"} onExit={onExit} progress={{ current: position, total }} title={template.displayName}>
         <div className="mt-6 rounded-2xl border border-stone-200 bg-white px-4 py-4">
           <p className="text-xs font-medium text-stone-500">Finns i din planering</p>
-          <p className="mt-2 text-lg font-semibold text-stone-950">{existing.label}</p>
+          <p className="mt-2 flex items-center gap-2 text-lg font-semibold text-stone-950">
+            <RecognizedBrandLogo name={existing.label} />
+            <span>{existing.label}</span>
+          </p>
           <p className="mt-1 text-sm text-stone-600">
             {formatAmount(existing.amount)} · {frequencyLabel(existing.frequency)}
           </p>
@@ -413,7 +417,10 @@ function StreamingGuide({
                 key={template.id}
                 onClick={() => setSelectedIds((current) => active ? current.filter((id) => id !== template.id) : [...current, template.id])}
               >
-                {template.displayName}
+                <span className="flex items-center gap-2">
+                  <RecognizedBrandLogo name={template.displayName} />
+                  <span>{template.displayName}</span>
+                </span>
               </SetupChoiceButton>
             );
           })}

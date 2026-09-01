@@ -1,2 +1,3 @@
 CF_ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
 CF_ACCESS_AUD=replace-with-the-access-application-aud
+NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY=pk_replace-with-logo-dev-publishable-key

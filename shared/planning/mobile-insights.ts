@@ -44,6 +44,7 @@ export type MobileInsightMonthSource = {
 export type MobileInsightEvent = {
   detail?: string;
   id: string;
+  itemLabel?: string;
   kind: "annual" | "ending" | "negative" | "new" | "planned" | "unusual";
   title: string;
 };
@@ -64,6 +65,7 @@ type RankedInsightEvent = MobileInsightEvent & {
 type PlannedCost = {
   amount: number;
   id: string;
+  itemLabel?: string;
   itemIds: string[];
   label: string;
 };
@@ -132,6 +134,7 @@ function getPlannedCosts(
       groupedCosts.set(groupId, {
         amount,
         id: groupId,
+        itemLabel: categoryLabel ? undefined : label,
         itemIds: [item.id],
         label,
       });
@@ -147,6 +150,7 @@ function toPublicEvent(event: RankedInsightEvent): MobileInsightEvent {
   return {
     detail: event.detail,
     id: event.id,
+    itemLabel: event.itemLabel,
     kind: event.kind,
     title: event.title,
   };
@@ -210,6 +214,7 @@ export function buildMobileUpcomingInsights({
         events.push({
           detail: `${formatCurrency(amount)}/mån`,
           id: `${month.id}-${item.id}-new`,
+          itemLabel: label,
           itemIds: [item.id],
           kind: "new",
           sortAmount: amount,
@@ -234,6 +239,7 @@ export function buildMobileUpcomingInsights({
         events.push({
           detail: `${formatCurrency(previousAmount)}/mån försvinner ur planeringen.`,
           id: `${month.id}-${item.id}-ending`,
+          itemLabel: label,
           itemIds: [item.id],
           kind: "ending",
           sortAmount: previousAmount,
@@ -246,6 +252,7 @@ export function buildMobileUpcomingInsights({
         events.push({
           detail: `${formatCurrency(amount)} · Dags att se över priset.`,
           id: `${month.id}-${item.id}-annual`,
+          itemLabel: label,
           itemIds: [item.id],
           kind: "annual",
           sortAmount: amount,
@@ -263,6 +270,7 @@ export function buildMobileUpcomingInsights({
         events.push({
           detail: formatCurrency(amount),
           id: `${month.id}-${item.id}-one-off`,
+          itemLabel: label,
           itemIds: [item.id],
           kind: "unusual",
           sortAmount: amount,
@@ -282,6 +290,7 @@ export function buildMobileUpcomingInsights({
         events.push({
           detail: formatCurrency(amount),
           id: `${month.id}-${item.id}-unusual`,
+          itemLabel: label,
           itemIds: [item.id],
           kind: "unusual",
           sortAmount: amount - normalActiveAmount,
@@ -341,6 +350,7 @@ export function buildMobileUpcomingInsights({
       selectedEvents.push({
         detail: formatCurrency(plannedCost.amount),
         id: `${month.id}-${plannedCost.id}-planned`,
+        itemLabel: plannedCost.itemLabel,
         itemIds: plannedCost.itemIds,
         kind: "planned",
         sortAmount: plannedCost.amount,
