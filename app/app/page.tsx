@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   currentPlanningYear,
+  emptyPlanningDataV3,
   seedPlanningDataV3,
 } from "../../shared/planning/seed-planning-data.ts";
 import {
@@ -43,6 +44,32 @@ import {
   hasUnsavedWorkspaceChanges,
   type WorkspaceSaveOperationState,
 } from "../../shared/workspace/save-experience.ts";
+import {
+  finalizePlanningOnboarding,
+  getPlanningCompletionSuggestion,
+  setOnboardingIncomeAmount,
+  setOnboardingSavingsAmount,
+  shouldOfferPlanningOnboarding,
+} from "../../shared/planning/onboarding.ts";
+import {
+  OnboardingFlow,
+  OnboardingWelcome,
+  WorkspaceCompletionHint,
+} from "./onboarding.tsx";
+import {
+  upsertGuidedSetupExpense,
+  type GuidedSetupFrequency,
+  type GuidedSetupGuideId,
+} from "../../shared/planning/guided-setup.ts";
+import {
+  GuidedSetupEntryPoint,
+  GuidedSetupPlatform,
+} from "./guided-setup.tsx";
+import {
+  famekoMainSectionSymbols,
+  getExpenseCategoryMainSectionId,
+  type FamekoMainSectionId,
+} from "../../shared/ui/fameko-symbols.ts";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = PlanningEditScope;
@@ -257,8 +284,6 @@ const directAllocationCategoryIds = new Set(["mat", "sparande"]);
 const rowNameMaxLength = 48;
 
 const planningYear = currentPlanningYear;
-const planningYears = [2023, 2024, 2025, planningYear];
-
 const expenseFrequencyOptions: { value: ExpenseFrequency; label: string; interval: number | null }[] = [
   { value: "once", label: "Engångskostnad", interval: null },
   { value: "monthly", label: "Varje månad", interval: 1 },
@@ -1242,6 +1267,7 @@ function savePlanningData(data: PlanningData) {
 }
 
 const seedPlanningData: PlanningData = seedPlanningDataV3;
+const emptyPlanningData: PlanningData = emptyPlanningDataV3;
 
 function readImportDecision() {
   if (typeof window === "undefined") {
@@ -1510,9 +1536,10 @@ function getCategoryYearTotal(months: ForecastMonth[], categoryId: string) {
 function getLargestCosts(data: PlanningData): LargestCost[] {
   const categoryIcons: Record<string, string> = {
     bil: "🚗",
-    boende: "🏠",
-    forsakringar: "🛡️",
-    husdjur: "🐾",
+    boende: famekoMainSectionSymbols.mortgage,
+    forsakringar: famekoMainSectionSymbols.insurance,
+    husdjur: famekoMainSectionSymbols.pets,
+    "lan-och-krediter": famekoMainSectionSymbols.debts,
     mat: "🍽️",
     streaming: "📺",
     ovrigt: "•••",
@@ -1742,6 +1769,7 @@ function DesktopGridRow({
   onSelectMonth,
   onToggle,
   saving = false,
+  symbol,
   result = false,
   summary = false,
   values,
@@ -1757,6 +1785,7 @@ function DesktopGridRow({
   onSelectMonth: (monthId: string) => void;
   onToggle?: () => void;
   saving?: boolean;
+  symbol?: FamekoMainSectionId;
   result?: boolean;
   summary?: boolean;
   values: string[];
@@ -1808,12 +1837,22 @@ function DesktopGridRow({
           >
             ›
           </span>
+          {symbol ? (
+            <span aria-hidden="true" className="w-5 shrink-0 text-center text-sm leading-none">
+              {famekoMainSectionSymbols[symbol]}
+            </span>
+          ) : null}
           <span className="truncate" title={label}>{label}</span>
         </button>
       ) : (
         <div
           className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 pr-2 ${rowTextSize} ${rowPadding} ${labelIndent} ${weight} ${tone} ${divider} ${resultEdge}`}
         >
+          {symbol ? (
+            <span aria-hidden="true" className="mr-2 w-5 shrink-0 text-center text-sm leading-none">
+              {famekoMainSectionSymbols[symbol]}
+            </span>
+          ) : null}
           <span className="truncate" title={label}>{label}</span>
         </div>
       )}
@@ -2436,6 +2475,7 @@ function YearOverview({
     const groupRail = depth === 0 ? "" : "border-l border-l-stone-200 pl-4";
     const toggleIndent = "";
     const itemIndent = depth === 0 ? "ml-8" : "ml-12";
+    const mainSectionId = getExpenseCategoryMainSectionId(categoryId);
 
     return (
       <div className="contents" key={`category-${categoryId}`}>
@@ -2458,6 +2498,11 @@ function YearOverview({
               ›
             </span>
           </button>
+          {mainSectionId ? (
+            <span aria-hidden="true" className="w-5 shrink-0 text-center text-sm leading-none">
+              {famekoMainSectionSymbols[mainSectionId]}
+            </span>
+          ) : null}
           <EditableName
             ariaLabel={`Redigera namnet ${category.name}`}
             cell
@@ -2766,6 +2811,7 @@ function YearOverview({
           months={months}
           onSelectMonth={onSelectMonth}
           summary
+          symbol="income"
           values={months.map((month) => month.income)}
           yearTotal={getYearSummary(yearRows[0], months)}
         />
@@ -2795,6 +2841,7 @@ function YearOverview({
           months={months}
           onSelectMonth={onSelectMonth}
           summary
+          symbol="allocations"
           values={months.map((month) => month.expenses)}
           yearTotal={getYearSummary(yearRows[1], months)}
         />
@@ -2839,6 +2886,7 @@ function YearOverview({
           onSelectMonth={onSelectMonth}
           onToggle={onToggleCostAccount}
           summary
+          symbol="billAccount"
           values={billAccountAllocationValues}
           yearTotal={getAllocationYearTotal(months, "billAccount")}
         />
@@ -2897,6 +2945,7 @@ function YearOverview({
           onSelectMonth={onSelectMonth}
           onToggle={onToggleMortgage}
           summary
+          symbol="mortgage"
           values={mortgageAllocationValues}
           yearTotal={getAllocationYearTotal(months, "mortgage")}
         />
@@ -2953,6 +3002,7 @@ function YearOverview({
           onToggle={onToggleSavings}
           saving
           summary
+          symbol="savings"
           values={savingAllocationValues}
           yearTotal={getAllocationYearTotal(months, "savings")}
         />
@@ -4503,53 +4553,18 @@ function MobileLargestCosts({ costs }: { costs: LargestCost[] }) {
 
 function YearNavigation() {
   return (
-    <nav
-      aria-label="Välj planeringsår"
-      className="mx-auto flex w-full max-w-[1560px] flex-col gap-3 px-4 pb-5 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8"
+    <section
+      aria-label="Aktivt planeringsår"
+      className="mx-auto flex w-full max-w-[1560px] items-center gap-3 px-4 pb-5 sm:px-6 lg:px-8"
     >
-      <div className="flex items-center justify-between gap-3 sm:justify-start">
-        <span className={`${mobileTypography.metadata} text-stone-400 lg:text-xs lg:font-medium lg:leading-4`}>År</span>
-        <div className="inline-flex items-center rounded-lg border border-stone-200 bg-white p-1">
-          {planningYears.map((year) => {
-            const selected = year === planningYear;
-
-            return (
-              <button
-                aria-current={selected ? "page" : undefined}
-                aria-disabled="true"
-                className={`min-h-8 min-w-11 cursor-default rounded-md px-2 ${mobileTypography.metadata} transition sm:min-w-12 lg:text-sm lg:font-medium ${
-                  selected ? "bg-[#e9eee7] text-stone-950" : "text-stone-400"
-                }`}
-                disabled
-                key={year}
-                type="button"
-              >
-                {year}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 sm:justify-end">
-        <button
-          aria-disabled="true"
-          className={`min-h-9 cursor-default px-1 text-left ${mobileTypography.metadata} text-stone-400 sm:px-2 lg:text-sm`}
-          disabled
-          type="button"
-        >
-          Uppdatera från föregående år
-        </button>
-        <button
-          aria-disabled="true"
-          className={`min-h-9 shrink-0 cursor-default rounded-md border border-stone-200 bg-white px-3 ${mobileTypography.metadata} text-stone-500 lg:text-sm lg:font-medium`}
-          disabled
-          type="button"
-        >
-          + Nytt år
-        </button>
-      </div>
-    </nav>
+      <span className={`${mobileTypography.metadata} text-stone-400 lg:text-xs lg:font-medium lg:leading-4`}>År</span>
+      <span
+        aria-current="date"
+        className={`rounded-md bg-[#e9eee7] px-3 py-1.5 ${mobileTypography.metadata} font-semibold text-stone-950 lg:text-sm`}
+      >
+        {planningYear}
+      </span>
+    </section>
   );
 }
 
@@ -5045,7 +5060,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
 }
 
 export default function Home() {
-  const [planningData, setPlanningData] = useState(seedPlanningData);
+  const [planningData, setPlanningData] = useState(emptyPlanningData);
   const [cloudLoadState, setCloudLoadState] = useState<CloudLoadState>("loading");
   const [cloudSaveState, setCloudSaveState] = useState<CloudSaveState>("idle");
   const [cloudMessage, setCloudMessage] = useState("Hämtar din ekonomi…");
@@ -5077,6 +5092,11 @@ export default function Home() {
   const [annualPlanningOpen, setAnnualPlanningOpen] = useState(false);
   const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
   const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
+  const [onboardingStarted, setOnboardingStarted] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [guidedSetupOpen, setGuidedSetupOpen] = useState(false);
+  const [guidedSetupInitialGuide, setGuidedSetupInitialGuide] =
+    useState<GuidedSetupGuideId | null>(null);
   const [addDraft, setAddDraft] = useState<AddExpenseDraft>({
     categoryId: "bil",
     description: "",
@@ -5120,7 +5140,7 @@ export default function Home() {
         }
 
         const hasLocalChanges =
-          storedData && JSON.stringify(storedData) !== JSON.stringify(seedPlanningData);
+          storedData && JSON.stringify(storedData) !== JSON.stringify(emptyPlanningData);
         if (hasLocalChanges && !readImportDecision()) {
           setPlanningData(storedData);
           setImportCandidate(storedData);
@@ -5129,7 +5149,7 @@ export default function Home() {
           return;
         }
 
-        const created = await saveCloudPlanningYear(seedPlanningData, null);
+        const created = await saveCloudPlanningYear(emptyPlanningData, null);
         if (cancelled) {
           return;
         }
@@ -5226,6 +5246,10 @@ export default function Home() {
     [currentMonth.id, planningData],
   );
   const savingsOverview = useMemo(() => getSavingsOverview(planningData), [planningData]);
+  const completionSuggestion = useMemo(
+    () => getPlanningCompletionSuggestion(planningData),
+    [planningData],
+  );
   const savingsPreview = {
     monthlyIncome: savingsOverview.monthlyIncome,
     monthlySavings: savingsOverview.monthlySavings,
@@ -5261,7 +5285,7 @@ export default function Home() {
 
     try {
       const result = await saveCloudPlanningYear(
-        importLocalData ? importCandidate : seedPlanningData,
+        importLocalData ? importCandidate : emptyPlanningData,
         null,
       );
       saveImportDecision(importLocalData ? "imported" : "declined");
@@ -5556,6 +5580,39 @@ export default function Home() {
     setAnnualPlanningOpen(false);
     setSavingsGoalDraft("");
     setSavingsGoalFormOpen(false);
+    setOnboardingStarted(false);
+    setOnboardingDismissed(true);
+    setGuidedSetupOpen(false);
+    setGuidedSetupInitialGuide(null);
+  }
+
+  function completeOnboarding() {
+    setPlanningData((currentData) => finalizePlanningOnboarding(currentData));
+    setOnboardingStarted(false);
+    setOnboardingDismissed(true);
+  }
+
+  function applyGuidedSetupExpense(
+    templateId: string,
+    value: {
+      amount: number;
+      frequency: GuidedSetupFrequency;
+      paymentMonth: string;
+    },
+  ) {
+    setPlanningData((currentData) =>
+      upsertGuidedSetupExpense(currentData, templateId, value),
+    );
+  }
+
+  function openGuidedSetup(guideId?: GuidedSetupGuideId) {
+    setGuidedSetupInitialGuide(guideId ?? null);
+    setGuidedSetupOpen(true);
+  }
+
+  function closeGuidedSetup() {
+    setGuidedSetupOpen(false);
+    setGuidedSetupInitialGuide(null);
   }
 
   const nameEditor: NameEditor = {
@@ -5601,6 +5658,11 @@ export default function Home() {
       </main>
     );
   }
+
+  const showOnboarding =
+    cloudLoadState === "ready" &&
+    (onboardingStarted ||
+      (!onboardingDismissed && shouldOfferPlanningOnboarding(planningData)));
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f5ef] text-stone-950">
@@ -5648,6 +5710,50 @@ export default function Home() {
         ready={cloudLoadState === "ready"}
       />
 
+      {showOnboarding ? (
+        onboardingStarted ? (
+          <OnboardingFlow
+            data={planningData}
+            onCarChange={(carData) =>
+              setPlanningData((currentData) => ({ ...currentData, carData }))
+            }
+            onComplete={completeOnboarding}
+            onHousingChange={(housingData) =>
+              setPlanningData((currentData) => ({ ...currentData, housingData }))
+            }
+            onIncomeChange={(key, value) =>
+              setPlanningData((currentData) =>
+                setOnboardingIncomeAmount(currentData, key, value),
+              )
+            }
+            onSavingsChange={(key, value) =>
+              setPlanningData((currentData) =>
+                setOnboardingSavingsAmount(currentData, key, value),
+              )
+            }
+          />
+        ) : (
+          <OnboardingWelcome onStart={() => setOnboardingStarted(true)} />
+        )
+      ) : guidedSetupOpen ? (
+        <GuidedSetupPlatform
+          data={planningData}
+          initialGuideId={guidedSetupInitialGuide ?? undefined}
+          onApply={applyGuidedSetupExpense}
+          onClose={closeGuidedSetup}
+          onIncomeChange={(key, value) =>
+            setPlanningData((currentData) =>
+              setOnboardingIncomeAmount(currentData, key, value),
+            )
+          }
+          onSavingsChange={(key, value) =>
+            setPlanningData((currentData) =>
+              setOnboardingSavingsAmount(currentData, key, value),
+            )
+          }
+        />
+      ) : (
+        <>
       <section
         aria-labelledby="workspace-hero-title"
         className="mx-auto w-full max-w-[1560px] px-4 pb-6 pt-4 sm:px-6 sm:pb-7 sm:pt-5 lg:px-8 lg:pt-6"
@@ -5771,6 +5877,11 @@ export default function Home() {
         savingsPreview={savingsPreview}
       />
 
+      <GuidedSetupEntryPoint
+        onStart={openGuidedSetup}
+        suggestion={completionSuggestion}
+      />
+
       <section
         aria-label="Fullständig årsplanering"
         className="mx-auto w-full max-w-[1560px] px-4 pb-3 pt-0 sm:px-6 lg:hidden"
@@ -5853,7 +5964,16 @@ export default function Home() {
         ) : null}
       </section>
 
+      {completionSuggestion ? (
+        <WorkspaceCompletionHint
+          onAction={() => openGuidedSetup(completionSuggestion.guideId)}
+          suggestion={completionSuggestion}
+        />
+      ) : null}
+
       <ProductFooter />
+        </>
+      )}
 
       {scopeDialogOpen ? (
         <ScopeDialog

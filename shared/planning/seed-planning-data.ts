@@ -39,7 +39,8 @@ export const seedPlanningDataV3 = {
     { id: "forsakringar", name: "Försäkringar", order: 4 },
     { id: "husdjur", name: "Husdjur", order: 5 },
     { id: "sparande", name: "Sparande", order: 6 },
-    { id: "ovrigt", name: "Övrigt", order: 7 },
+    { id: "lan-och-krediter", name: "Lån och krediter", order: 7 },
+    { id: "ovrigt", name: "Övrigt", order: 8 },
   ],
   expenseItems: [
     {
@@ -214,4 +215,20 @@ export const seedPlanningDataV3 = {
       recurring: true,
     },
   ],
+};
+
+export const emptyPlanningDataV3 = {
+  ...seedPlanningDataV3,
+  openingBalance: 0,
+  incomes: seedPlanningDataV3.incomes.map((income) => ({
+    ...income,
+    monthlyValues: monthlyValues(0),
+  })),
+  expenseCategories: seedPlanningDataV3.expenseCategories.map((category) => ({
+    ...category,
+  })),
+  expenseItems: seedPlanningDataV3.expenseItems.map((item) => ({
+    ...item,
+    monthlyValues: monthlyValues(0),
+  })),
 };

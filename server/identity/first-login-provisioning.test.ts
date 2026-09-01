@@ -5,7 +5,7 @@ import test from "node:test";
 import { Miniflare } from "miniflare";
 import { unstable_splitSqlQuery } from "wrangler";
 
-import { currentPlanningYear, seedPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
+import { currentPlanningYear, emptyPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
 import { provisionPilotIdentity } from "./provision-pilot.ts";
 import { resolveOrProvisionAuthorizedIdentity } from "./first-login-provisioning.ts";
 import type { VerifiedAuthContext } from "./identity-types.ts";
@@ -89,7 +89,7 @@ test("first verified login atomically creates User, Household, membership, ident
     assert.equal(planningYear?.year, currentPlanningYear);
     assert.equal(planningYear?.data_version, 3);
     assert.equal(planningYear?.revision, 1);
-    assert.deepEqual(JSON.parse(planningYear?.planning_data ?? "null"), seedPlanningDataV3);
+    assert.deepEqual(JSON.parse(planningYear?.planning_data ?? "null"), emptyPlanningDataV3);
   } finally {
     await miniflare.dispose();
   }

@@ -1,6 +1,6 @@
 import {
   currentPlanningYear,
-  seedPlanningDataV3,
+  emptyPlanningDataV3,
 } from "../../shared/planning/seed-planning-data.ts";
 import { PlanningRepository } from "../planning/planning-repository.ts";
 import {
@@ -50,7 +50,7 @@ async function provisionNewIdentity(
   authContext: VerifiedAuthContext,
 ): Promise<void> {
   const normalized = normalizeAuthContext(authContext);
-  const planningData: unknown = seedPlanningDataV3;
+  const planningData: unknown = emptyPlanningDataV3;
 
   if (!isPlanningData(planningData)) {
     throw new FirstLoginProvisioningError();
@@ -116,7 +116,7 @@ async function ensurePlanningYear(
   database: D1Database,
   context: AuthorizedPilotContext,
 ): Promise<void> {
-  const planningData: unknown = seedPlanningDataV3;
+  const planningData: unknown = emptyPlanningDataV3;
   if (!isPlanningData(planningData)) {
     throw new FirstLoginProvisioningError();
   }
