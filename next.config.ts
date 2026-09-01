@@ -8,11 +8,7 @@ function asLogoDevPublishableKey(value: string | undefined) {
   return normalized?.startsWith("pk_") ? normalized : undefined;
 }
 
-function readDevelopmentLogoDevKey() {
-  if (process.env.NODE_ENV !== "development") {
-    return undefined;
-  }
-
+function readLocalLogoDevKey() {
   try {
     const line = readFileSync(".dev.vars", "utf8")
       .split(/\r?\n/)
@@ -24,9 +20,9 @@ function readDevelopmentLogoDevKey() {
   }
 }
 
-const logoDevPublishableKey =
-  asLogoDevPublishableKey(process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY) ??
-  readDevelopmentLogoDevKey();
+const logoDevPublishableKey = Object.hasOwn(process.env, logoDevVariableName)
+  ? asLogoDevPublishableKey(process.env[logoDevVariableName])
+  : readLocalLogoDevKey();
 
 const nextConfig: NextConfig = {
   env: logoDevPublishableKey

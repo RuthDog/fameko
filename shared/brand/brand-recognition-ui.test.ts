@@ -54,9 +54,10 @@ test("the browser receives only the configured domain through Logo.dev", () => {
   assert.doesNotMatch(logoSource, /PlanningData|amount|income|expense/);
 });
 
-test("Next development exposes only the publishable Logo.dev key from .dev.vars", () => {
-  assert.match(nextConfigSource, /process\.env\.NODE_ENV !== "development"/);
+test("Next builds expose only the publishable Logo.dev key from .dev.vars", () => {
+  assert.match(nextConfigSource, /Object\.hasOwn\(process\.env, logoDevVariableName\)/);
   assert.match(nextConfigSource, /readFileSync\("\.dev\.vars", "utf8"\)/);
   assert.match(nextConfigSource, /normalized\?\.startsWith\("pk_"\)/);
+  assert.doesNotMatch(nextConfigSource, /process\.env\.NODE_ENV/);
   assert.doesNotMatch(nextConfigSource, /CF_ACCESS_(?:AUD|TEAM_DOMAIN)/);
 });
