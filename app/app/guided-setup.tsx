@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { CurrencyInput } from "../components/currency-input.tsx";
 import { RecognizedBrandLogo } from "../components/brand-logo.tsx";
+import { FamekoSymbol } from "../components/fameko-symbol.tsx";
 import {
   getGuidedSetupExpense,
   getGuidedSetupCurrentMonthId,
@@ -33,7 +34,6 @@ import {
   SetupChoiceButton,
 } from "./onboarding.tsx";
 import {
-  famekoMainSectionSymbols,
   type FamekoMainSectionId,
 } from "../../shared/ui/fameko-symbols.ts";
 
@@ -661,9 +661,10 @@ export function GuidedSetupPlatform({
             <button className="rounded-2xl border border-stone-200 bg-white px-4 py-4 text-left transition hover:border-stone-400 hover:shadow-[0_8px_24px_rgba(28,25,23,0.05)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900" key={option.id} onClick={() => start([option.id])} type="button">
               <span className="flex items-center gap-2 text-sm font-semibold text-stone-900">
                 {guidedSetupMainSectionIds[option.id] ? (
-                  <span aria-hidden="true" className="w-5 text-center text-sm leading-none">
-                    {famekoMainSectionSymbols[guidedSetupMainSectionIds[option.id]!]}
-                  </span>
+                  <FamekoSymbol
+                    size={28}
+                    symbol={guidedSetupMainSectionIds[option.id]!}
+                  />
                 ) : null}
                 <span>{option.name}</span>
               </span>

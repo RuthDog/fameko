@@ -67,11 +67,12 @@ import {
   GuidedSetupPlatform,
 } from "./guided-setup.tsx";
 import {
-  famekoMainSectionSymbols,
-  getExpenseCategoryMainSectionId,
+  getExpenseCategorySymbolId,
   type FamekoMainSectionId,
+  type FamekoSymbolId,
 } from "../../shared/ui/fameko-symbols.ts";
 import { RecognizedBrandLogo } from "../components/brand-logo.tsx";
+import { FamekoSymbol } from "../components/fameko-symbol.tsx";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = PlanningEditScope;
@@ -207,11 +208,11 @@ type ForecastMonth = {
 
 type LargestCost = {
   amount: string;
-  icon: string;
   id: string;
   insight: string;
   name: string;
   percentage: number;
+  symbol: FamekoSymbolId;
 };
 
 type YearRow = {
@@ -1536,16 +1537,6 @@ function getCategoryYearTotal(months: ForecastMonth[], categoryId: string) {
 }
 
 function getLargestCosts(data: PlanningData): LargestCost[] {
-  const categoryIcons: Record<string, string> = {
-    bil: "🚗",
-    boende: famekoMainSectionSymbols.mortgage,
-    forsakringar: famekoMainSectionSymbols.insurance,
-    husdjur: famekoMainSectionSymbols.pets,
-    "lan-och-krediter": famekoMainSectionSymbols.debts,
-    mat: "🍽️",
-    streaming: "📺",
-    ovrigt: "•••",
-  };
   const categories = getEffectiveExpenseCategoryTotals(data, monthIds)
     .filter((category) => category.id !== "sparande")
     .filter((category) => category.total > 0);
@@ -1560,7 +1551,6 @@ function getLargestCosts(data: PlanningData): LargestCost[] {
 
       return {
         amount: formatAmount(category.total),
-        icon: categoryIcons[category.id] ?? "•",
         id: category.id,
         insight:
           index === 0
@@ -1568,6 +1558,7 @@ function getLargestCosts(data: PlanningData): LargestCost[] {
             : `${category.name} står för ${percentage} % av årets planerade kostnader.`,
         name: category.name,
         percentage,
+        symbol: getExpenseCategorySymbolId(category.id),
       };
     });
 }
@@ -1840,9 +1831,7 @@ function DesktopGridRow({
             ›
           </span>
           {symbol ? (
-            <span aria-hidden="true" className="w-5 shrink-0 text-center text-sm leading-none">
-              {famekoMainSectionSymbols[symbol]}
-            </span>
+            <FamekoSymbol size={24} symbol={symbol} />
           ) : null}
           <span className="truncate" title={label}>{label}</span>
         </button>
@@ -1851,9 +1840,7 @@ function DesktopGridRow({
           className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 pr-2 ${rowTextSize} ${rowPadding} ${labelIndent} ${weight} ${tone} ${divider} ${resultEdge}`}
         >
           {symbol ? (
-            <span aria-hidden="true" className="mr-2 w-5 shrink-0 text-center text-sm leading-none">
-              {famekoMainSectionSymbols[symbol]}
-            </span>
+            <FamekoSymbol className="mr-2" size={24} symbol={symbol} />
           ) : null}
           <span className="truncate" title={label}>{label}</span>
         </div>
@@ -2380,8 +2367,10 @@ function DesktopSavingsGoalAddRow({
 function YearOverview({
   editingKey,
   editingValue,
+  expandedAllocations,
   expandedCostAccount,
   expandedGridCategories,
+  expandedIncome,
   expandedMortgage,
   expandedSavings,
   labels,
@@ -2403,15 +2392,19 @@ function YearOverview({
   onSaveEdit,
   onSaveSavingsGoal,
   onToggleCostAccount,
+  onToggleAllocations,
   onToggleGridCategory,
+  onToggleIncome,
   onToggleMortgage,
   onToggleSavings,
   selectedMonthId,
 }: {
   editingKey: string | null;
   editingValue: string;
+  expandedAllocations: boolean;
   expandedCostAccount: boolean;
   expandedGridCategories: Record<string, boolean>;
+  expandedIncome: boolean;
   expandedMortgage: boolean;
   expandedSavings: boolean;
   labels: ResolvedPlanningLabels;
@@ -2433,7 +2426,9 @@ function YearOverview({
   onSaveEdit: () => void;
   onSaveSavingsGoal: () => void;
   onToggleCostAccount: () => void;
+  onToggleAllocations: () => void;
   onToggleGridCategory: (categoryName: string) => void;
+  onToggleIncome: () => void;
   onToggleMortgage: () => void;
   onToggleSavings: () => void;
   selectedMonthId: string;
@@ -2477,7 +2472,7 @@ function YearOverview({
     const groupRail = depth === 0 ? "" : "border-l border-l-stone-200 pl-4";
     const toggleIndent = "";
     const itemIndent = depth === 0 ? "ml-8" : "ml-12";
-    const mainSectionId = getExpenseCategoryMainSectionId(categoryId);
+    const categorySymbolId = getExpenseCategorySymbolId(categoryId);
 
     return (
       <div className="contents" key={`category-${categoryId}`}>
@@ -2500,11 +2495,7 @@ function YearOverview({
               ›
             </span>
           </button>
-          {mainSectionId ? (
-            <span aria-hidden="true" className="w-5 shrink-0 text-center text-sm leading-none">
-              {famekoMainSectionSymbols[mainSectionId]}
-            </span>
-          ) : null}
+          <FamekoSymbol size={24} symbol={categorySymbolId} />
           <EditableName
             ariaLabel={`Redigera namnet ${category.name}`}
             cell
@@ -2813,17 +2804,19 @@ function YearOverview({
 
         <DesktopGridRow
           chapter
+          expanded={expandedIncome}
           label="Inkomster"
           monthCellTone={monthCellTone}
           months={months}
           onSelectMonth={onSelectMonth}
+          onToggle={onToggleIncome}
           summary
           symbol="income"
           values={months.map((month) => month.income)}
           yearTotal={getYearSummary(yearRows[0], months)}
         />
 
-        {incomeLines.map((line) => (
+        {expandedIncome ? incomeLines.map((line) => (
           <DesktopIncomeLineRow
             editingKey={editingKey}
             editingValue={editingValue}
@@ -2839,21 +2832,23 @@ function YearOverview({
             onSelectMonth={onSelectMonth}
             onSaveEdit={onSaveEdit}
           />
-        ))}
+        )) : null}
 
         <DesktopGridRow
           chapter
+          expanded={expandedAllocations}
           label="Fördelningar"
           monthCellTone={monthCellTone}
           months={months}
           onSelectMonth={onSelectMonth}
+          onToggle={onToggleAllocations}
           summary
           symbol="allocations"
           values={months.map((month) => month.expenses)}
           yearTotal={getYearSummary(yearRows[1], months)}
         />
 
-        {allocationRows.map((allocation) => (
+        {expandedAllocations ? allocationRows.map((allocation) => (
           <DesktopAllocationRow
             allocationKey={allocation.key}
             editingKey={editingKey}
@@ -2870,7 +2865,7 @@ function YearOverview({
             onSaveEdit={onSaveEdit}
             saving={allocation.key === "savings"}
           />
-        ))}
+        )) : null}
 
         <DesktopGridRow
           label="Kvar att fördela"
@@ -3233,6 +3228,7 @@ function PlanningGroup({
   label,
   onToggle,
   saving = false,
+  symbol,
 }: {
   amount: string;
   children?: React.ReactNode;
@@ -3240,6 +3236,7 @@ function PlanningGroup({
   label: string;
   onToggle: () => void;
   saving?: boolean;
+  symbol: FamekoMainSectionId;
 }) {
   return (
     <div className="border-b border-stone-100">
@@ -3253,6 +3250,7 @@ function PlanningGroup({
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <MobileDisclosureChevron expanded={expanded} />
+          <FamekoSymbol size={28} symbol={symbol} />
           <span className="truncate" title={label}>{label}</span>
         </span>
         <span className={`shrink-0 ${mobileTypography.item} tabular-nums ${saving ? "text-emerald-900" : "text-stone-600"}`}>
@@ -3270,15 +3268,20 @@ function PlanningPrimaryGroup({
   amount,
   children,
   label,
+  symbol,
 }: {
   amount: string;
   children: React.ReactNode;
   label: string;
+  symbol: FamekoMainSectionId;
 }) {
   return (
     <section aria-label={label} className="border-b border-stone-200">
       <div className={`flex ${mobileRhythm.disclosureButton} items-center justify-between gap-4 border-b border-stone-100 text-stone-950`}>
-        <h4 className={mobileTypography.sectionTitle}>{label}</h4>
+        <h4 className={`flex items-center gap-2.5 ${mobileTypography.sectionTitle}`}>
+          <FamekoSymbol size={28} symbol={symbol} />
+          <span>{label}</span>
+        </h4>
         <span className={`shrink-0 ${mobileTypography.item} tabular-nums text-stone-600`}>{amount}</span>
       </div>
       <div className={mobileRhythm.disclosureContent}>{children}</div>
@@ -3733,6 +3736,7 @@ function ExpenseList({
                 >
                   {canExpand ? <MobileDisclosureChevron expanded={expanded} /> : null}
                 </button>
+                <FamekoSymbol size={26} symbol={getExpenseCategorySymbolId(categoryId)} />
                 <EditableName
                   ariaLabel={`Redigera namnet ${category.name}`}
                   editing={nameEditor.editingKey === nameKey(categoryNameTarget)}
@@ -4456,19 +4460,19 @@ function MobileCurrentDisclosure({
   children,
   expanded,
   id,
-  illustrationSrc,
   label,
   onToggle,
   saving = false,
+  symbol,
 }: {
   amount: string;
   children: React.ReactNode;
   expanded: boolean;
   id: string;
-  illustrationSrc?: string;
   label: string;
   onToggle: () => void;
   saving?: boolean;
+  symbol: FamekoMainSectionId;
 }) {
   const contentId = `mobile-current-${id}-content`;
 
@@ -4485,20 +4489,7 @@ function MobileCurrentDisclosure({
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <MobileDisclosureChevron expanded={expanded} />
-          {illustrationSrc ? (
-            <span className="relative h-8 w-8 shrink-0" aria-hidden="true">
-              <Image
-                alt=""
-                className="object-contain"
-                fill
-                sizes="32px"
-                src={illustrationSrc}
-                unoptimized
-              />
-            </span>
-          ) : (
-            <span aria-hidden="true" className="h-8 w-8 shrink-0" />
-          )}
+          <FamekoSymbol size={32} symbol={symbol} />
           <span className="truncate" title={label}>
             {label}
           </span>
@@ -4544,7 +4535,7 @@ function MobileLargestCosts({ costs }: { costs: LargestCost[] }) {
                 aria-hidden="true"
                 className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f1f3ed] text-lg"
               >
-                {cost.icon}
+                <FamekoSymbol size={28} symbol={cost.symbol} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-4">
@@ -4710,7 +4701,7 @@ function MonthDetail({
           <div className="mt-8">
             <PlanningSectionHeading first label="Inkomster och fördelningar" />
 
-            <PlanningPrimaryGroup amount={month.income} label="Inkomster">
+            <PlanningPrimaryGroup amount={month.income} label="Inkomster" symbol="income">
               {incomeLines.map((line) => (
                 <MobileIncomeLine
                   editingKey={editingKey}
@@ -4728,7 +4719,11 @@ function MonthDetail({
               ))}
             </PlanningPrimaryGroup>
 
-            <PlanningPrimaryGroup amount={month.expenses} label="Fördelningar">
+            <PlanningPrimaryGroup
+              amount={month.expenses}
+              label="Fördelningar"
+              symbol="allocations"
+            >
               {allocationRows.map((allocation) => (
                 <MobileAllocationLine
                   allocationKey={allocation.key}
@@ -4756,6 +4751,7 @@ function MonthDetail({
               expanded={expandedCostAccount}
               label={labels.allocations.billAccount}
               onToggle={onToggleCostAccount}
+              symbol="billAccount"
             >
               <PlanningLine amount={billAccountAllocation} label="Tillfört konto" />
               <MobileOpeningBalance
@@ -4793,6 +4789,7 @@ function MonthDetail({
               expanded={expandedMortgage}
               label={labels.allocations.mortgage}
               onToggle={onToggleMortgage}
+              symbol="mortgage"
             >
               <PlanningLine amount={mortgageAllocation} label="Tillfört" />
               {mortgageRows.map((row) => (
@@ -4825,6 +4822,7 @@ function MonthDetail({
               label={labels.allocations.savings}
               onToggle={onToggleSavings}
               saving
+              symbol="savings"
             >
               <PlanningLine amount={savingAllocation} label="Tillfört" saving />
               {savingsGoals.map((goal) => (
@@ -4929,9 +4927,9 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={month.income}
           expanded={expandedSection === "income"}
           id="income"
-          illustrationSrc="/images/mobile-insights/income.webp"
           label="Inkomster"
           onToggle={() => toggleSection("income")}
+          symbol="income"
         >
           {incomeLines.map((line) => (
             <MobileIncomeLine
@@ -4954,9 +4952,9 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={month.expenses}
           expanded={expandedSection === "allocations"}
           id="allocations"
-          illustrationSrc="/images/mobile-insights/allocations.png"
           label="Fördelningar"
           onToggle={() => toggleSection("allocations")}
+          symbol="allocations"
         >
           {allocationRows.map((allocation) => (
             <MobileAllocationLine
@@ -4982,9 +4980,9 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={billAccountAllocation}
           expanded={expandedSection === "bills"}
           id="bills"
-          illustrationSrc="/images/mobile-insights/bills.webp"
           label={labels.allocations.billAccount}
           onToggle={() => toggleSection("bills")}
+          symbol="billAccount"
         >
           <PlanningLine amount={billAccountAllocation} label="Tillfört konto" />
           <MobileOpeningBalance
@@ -5021,9 +5019,9 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={mortgageAllocation}
           expanded={expandedSection === "mortgage"}
           id="mortgage"
-          illustrationSrc="/images/mobile-insights/mortgage.png"
           label={labels.allocations.mortgage}
           onToggle={() => toggleSection("mortgage")}
+          symbol="mortgage"
         >
           <PlanningLine amount={mortgageAllocation} label="Tillfört" />
           {mortgageRows.map((row) => (
@@ -5052,10 +5050,10 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
           amount={savingAllocation}
           expanded={expandedSection === "savings"}
           id="savings"
-          illustrationSrc="/images/mobile-insights/savings.webp"
           label={labels.allocations.savings}
           onToggle={() => toggleSection("savings")}
           saving
+          symbol="savings"
         >
           <PlanningLine amount={savingAllocation} label="Tillfört" saving />
           {savingsGoals.map((goal) => (
@@ -5111,6 +5109,8 @@ export default function Home() {
   const [expandedMortgage, setExpandedMortgage] = useState(false);
   const [expandedSavings, setExpandedSavings] = useState(false);
   const [expandedCostAccount, setExpandedCostAccount] = useState(false);
+  const [expandedIncome, setExpandedIncome] = useState(false);
+  const [expandedAllocations, setExpandedAllocations] = useState(false);
   const [expandedGridCategories, setExpandedGridCategories] = useState<Record<string, boolean>>({});
   const [editingTarget, setEditingTarget] = useState<AmountTarget | null>(null);
   const [editingInitialAmount, setEditingInitialAmount] = useState(0);
@@ -5840,8 +5840,10 @@ export default function Home() {
           currentMonthId={currentMonthId}
           editingKey={editingTarget ? amountKey(editingTarget) : null}
           editingValue={editingValue}
+          expandedAllocations={expandedAllocations}
           expandedCostAccount={expandedCostAccount}
           expandedGridCategories={expandedGridCategories}
+          expandedIncome={expandedIncome}
           expandedMortgage={expandedMortgage}
           expandedSavings={expandedSavings}
           labels={labels}
@@ -5861,8 +5863,10 @@ export default function Home() {
           onSelectMonth={selectMonth}
           onSaveEdit={saveEdit}
           onSaveSavingsGoal={saveSavingsGoal}
+          onToggleAllocations={() => setExpandedAllocations((current) => !current)}
           onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
           onToggleGridCategory={toggleGridCategory}
+          onToggleIncome={() => setExpandedIncome((current) => !current)}
           onToggleMortgage={() => setExpandedMortgage((current) => !current)}
           onToggleSavings={() => setExpandedSavings((current) => !current)}
           selectedMonthId={selectedMonth.id}
@@ -5937,8 +5941,10 @@ export default function Home() {
               currentMonthId={currentMonthId}
               editingKey={editingTarget ? amountKey(editingTarget) : null}
               editingValue={editingValue}
+              expandedAllocations={expandedAllocations}
               expandedCostAccount={expandedCostAccount}
               expandedGridCategories={expandedGridCategories}
+              expandedIncome={expandedIncome}
               expandedMortgage={expandedMortgage}
               expandedSavings={expandedSavings}
               labels={labels}
@@ -5958,8 +5964,10 @@ export default function Home() {
               onSelectMonth={selectMonth}
               onSaveEdit={saveEdit}
               onSaveSavingsGoal={saveSavingsGoal}
+              onToggleAllocations={() => setExpandedAllocations((current) => !current)}
               onToggleCostAccount={() => setExpandedCostAccount((current) => !current)}
               onToggleGridCategory={toggleGridCategory}
+              onToggleIncome={() => setExpandedIncome((current) => !current)}
               onToggleMortgage={() => setExpandedMortgage((current) => !current)}
               onToggleSavings={() => setExpandedSavings((current) => !current)}
               selectedMonthId={selectedMonth.id}

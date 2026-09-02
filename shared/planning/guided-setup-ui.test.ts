@@ -30,12 +30,25 @@ test("the complete recommendation card is one direct action", () => {
   assert.match(onboardingSource, /<span className="shrink-0[^"]*">\s*\{suggestion\.actionLabel\}/);
 });
 
-test("the annual table renders symbols only on approved main rows", () => {
+test("Workspace and Guided Setup use one shared symbol component", () => {
   for (const symbol of ["income", "allocations", "billAccount", "mortgage", "savings"]) {
     assert.match(workspaceSource, new RegExp(`symbol="${symbol}"`));
   }
-  assert.match(workspaceSource, /getExpenseCategoryMainSectionId\(categoryId\)/);
-  assert.match(workspaceSource, /famekoMainSectionSymbols\[mainSectionId\]/);
+  assert.match(workspaceSource, /getExpenseCategorySymbolId\(categoryId\)/);
+  assert.match(workspaceSource, /<FamekoSymbol size=\{26\}/);
+  assert.match(guidedSetupSource, /<FamekoSymbol[\s\S]*?size=\{28\}/);
+  assert.doesNotMatch(workspaceSource, /famekoMainSectionSymbols/);
+  assert.doesNotMatch(guidedSetupSource, /famekoMainSectionSymbols/);
+});
+
+test("desktop income and allocations use the same disclosure model as other chapters", () => {
+  assert.match(workspaceSource, /expanded=\{expandedIncome\}[\s\S]*?onToggle=\{onToggleIncome\}/);
+  assert.match(
+    workspaceSource,
+    /expanded=\{expandedAllocations\}[\s\S]*?onToggle=\{onToggleAllocations\}/,
+  );
+  assert.match(workspaceSource, /expandedIncome \? incomeLines\.map/);
+  assert.match(workspaceSource, /expandedAllocations \? allocationRows\.map/);
 });
 
 test("non-monthly questions always request the next payment month", () => {
