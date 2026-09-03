@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-const detailRoutes = ["boende", "bil", "sparande"] as const;
+const detailRoutes = ["boende", "bil", "sparande", "ekonomisk-halsa"] as const;
 
 test("all Personal Economy detail routes exist as App Router pages", async () => {
   for (const route of detailRoutes) {

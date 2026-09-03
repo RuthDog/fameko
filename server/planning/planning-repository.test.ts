@@ -27,6 +27,12 @@ const carData = {
   currentLoanBalance: 185_000,
   monthlyAmortization: 2_500,
 };
+const financialAssetsData = {
+  investments: 180_000,
+  liquidSavings: 120_000,
+  otherFinancialAssets: null,
+  privatePension: 90_000,
+};
 
 function createPlanningData(openingBalance = 10_000) {
   const monthlyValues = Object.fromEntries(monthIds.map((monthId) => [monthId, 1_000]));
@@ -86,6 +92,10 @@ test("PlanningData v3 validation accepts the complete Workspace shape", () => {
   assert.equal(isPlanningData({ ...createPlanningData(), housingData }), true);
   assert.equal(isPlanningData({ ...createPlanningData(), carData }), true);
   assert.equal(
+    isPlanningData({ ...createPlanningData(), financialAssetsData }),
+    true,
+  );
+  assert.equal(
     isPlanningData({
       ...createPlanningData(),
       expenseItems: [
@@ -141,6 +151,34 @@ test("HousingData and CarData round-trip in the same authoritative PlanningData 
     assert.equal(updated?.revision, 2);
     assert.deepEqual(updated?.data.housingData, housingData);
     assert.deepEqual(updated?.data.carData, updatedCarData);
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("FinancialAssetsData round-trips in the authoritative PlanningData document", async () => {
+  const { database, miniflare } = await createDatabase();
+
+  try {
+    const repository = new PlanningRepository(database);
+    const data = { ...createPlanningData(), financialAssetsData };
+    const created = await repository.create("household-a", 2026, data, 3);
+    assert.ok(created);
+    assert.deepEqual(
+      (await repository.get("household-a", 2026))?.data.financialAssetsData,
+      financialAssetsData,
+    );
+
+    const updatedAssets = { ...financialAssetsData, liquidSavings: 160_000 };
+    const updated = await repository.update(
+      "household-a",
+      2026,
+      created.revision,
+      { ...data, financialAssetsData: updatedAssets },
+      3,
+    );
+    assert.equal(updated?.revision, 2);
+    assert.deepEqual(updated?.data.financialAssetsData, updatedAssets);
   } finally {
     await miniflare.dispose();
   }

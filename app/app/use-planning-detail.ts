@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { isCarData, type CarData } from "../../shared/planning/car.ts";
+import {
+  isFinancialAssetsData,
+  type FinancialAssetsData,
+} from "../../shared/planning/financial-assets.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
 import { currentPlanningYear } from "../../shared/planning/seed-planning-data.ts";
 import { migrateLegacySavingsStructure } from "../../shared/planning/savings.ts";
@@ -36,6 +40,7 @@ export type DetailPlanningData = {
   carData?: CarData;
   expenseCategories: Array<{ id: string; name: string; order: number }>;
   expenseItems: DetailExpenseItem[];
+  financialAssetsData?: FinancialAssetsData;
   housingData?: HousingData;
   incomeLineValues?: Partial<Record<string, Partial<Record<string, number>>>>;
   incomes: DetailIncome[];
@@ -85,7 +90,9 @@ function isDetailPlanningData(value: unknown): value is DetailPlanningData {
     Array.isArray(data.expenseCategories) &&
     Array.isArray(data.expenseItems) &&
     (data.housingData === undefined || isHousingData(data.housingData)) &&
-    (data.carData === undefined || isCarData(data.carData))
+    (data.carData === undefined || isCarData(data.carData)) &&
+    (data.financialAssetsData === undefined ||
+      isFinancialAssetsData(data.financialAssetsData))
   );
 }
 

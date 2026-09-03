@@ -37,6 +37,12 @@ test("copies the complete year including HousingData, CarData and brand labels",
       totalMortgage: 2_900_000,
       valuationDate: "2026-08-01",
     },
+    financialAssetsData: {
+      investments: 100_000,
+      liquidSavings: 150_000,
+      otherFinancialAssets: null,
+      privatePension: 80_000,
+    },
     labels: {
       expenseItems: { "streaming-spotify": "Spotify Premium Family" },
     },
@@ -47,6 +53,7 @@ test("copies the complete year including HousingData, CarData and brand labels",
   assert.notEqual(copy, source);
   assert.notEqual(copy.housingData, source.housingData);
   assert.notEqual(copy.carData, source.carData);
+  assert.notEqual(copy.financialAssetsData, source.financialAssetsData);
   assert.equal(copy.labels.expenseItems["streaming-spotify"], "Spotify Premium Family");
 });
 

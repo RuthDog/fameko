@@ -9,6 +9,8 @@ import {
 } from "./workspace-save-controls.tsx";
 
 export function DetailPageShell({
+  backHref = "/app#personal-economy-title",
+  backLabel = "Tillbaka till Min ekonomi",
   children,
   description,
   hasChanges,
@@ -18,6 +20,8 @@ export function DetailPageShell({
   saveState,
   title,
 }: {
+  backHref?: string;
+  backLabel?: string;
   children: ReactNode;
   description: string;
   hasChanges: boolean;
@@ -54,9 +58,9 @@ export function DetailPageShell({
       <div className="mx-auto w-full max-w-[1560px] px-4 pb-16 pt-7 sm:px-6 sm:pt-10 lg:px-8 lg:pb-24 lg:pt-12">
         <Link
           className="inline-flex min-h-10 items-center text-sm font-medium text-stone-500 transition hover:text-stone-950"
-          href="/app#personal-economy-title"
+          href={backHref}
         >
-          <span aria-hidden="true">←</span>&nbsp; Tillbaka till Min ekonomi
+          <span aria-hidden="true">←</span>&nbsp; {backLabel}
         </Link>
         <div className="mt-5 max-w-3xl">
           <h1 className={`${mobileTypography.pageTitle} text-stone-950 lg:text-[40px] lg:leading-[1.08]`}>

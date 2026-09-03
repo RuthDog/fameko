@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   currentPlanningYear,
@@ -13,6 +13,11 @@ import {
   isCarData,
   type CarData,
 } from "../../shared/planning/car.ts";
+import {
+  isFinancialAssetsData,
+  type FinancialAssetsData,
+} from "../../shared/planning/financial-assets.ts";
+import { evaluateFinancialHealth } from "../../shared/planning/financial-health.ts";
 import {
   applyScopedMonthValue,
   getAffectedMonthIds,
@@ -56,6 +61,7 @@ import {
 } from "../../shared/planning/year-management.ts";
 import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 import { PersonalEconomySection } from "./personal-economy-section.tsx";
+import { FinancialHealthCard } from "./financial-health-card.tsx";
 import {
   WorkspaceSaveButton,
   WorkspaceSaveStatusBar,
@@ -169,6 +175,7 @@ type PlanningData = {
   expenseCategories: ExpenseCategory[];
   expenseItems: ExpenseItem[];
   carData?: CarData;
+  financialAssetsData?: FinancialAssetsData;
   housingData?: HousingData;
   allocationOverrides?: AllocationOverrides;
   areaItemValues?: AreaItemValues;
@@ -1224,6 +1231,9 @@ function isPlanningData(value: unknown): value is PlanningData {
   const hasValidHousingData =
     data.housingData === undefined || isHousingData(data.housingData);
   const hasValidCarData = data.carData === undefined || isCarData(data.carData);
+  const hasValidFinancialAssetsData =
+    data.financialAssetsData === undefined ||
+    isFinancialAssetsData(data.financialAssetsData);
 
   return (
     data.version === 3 &&
@@ -1233,6 +1243,7 @@ function isPlanningData(value: unknown): value is PlanningData {
     hasValidIncomeLineValues &&
     hasValidHousingData &&
     hasValidCarData &&
+    hasValidFinancialAssetsData &&
     typeof data.openingBalance === "number" &&
     Array.isArray(data.incomes) &&
     Array.isArray(data.expenseCategories) &&
@@ -1816,7 +1827,9 @@ function getScopeOptions(monthId: string): { value: ChangeScope; label: string }
 }
 
 const desktopStickyLabelCell =
-  "sticky left-0 z-20 bg-white shadow-[1px_0_0_rgba(214,211,209,0.8)]";
+  "sticky left-0 z-10 bg-white shadow-[1px_0_0_rgba(214,211,209,0.8)]";
+const desktopStickyMonthHeader =
+  "sticky top-0 z-[15] bg-white";
 
 function DesktopSectionHeading({ first = false, label }: { first?: boolean; label: string }) {
   const spacing = first ? "pt-6" : "pt-10";
@@ -2553,6 +2566,17 @@ function YearOverview({
   const currentMonthIndex = currentMonthId
     ? months.findIndex((month) => month.id === currentMonthId)
     : -1;
+  const monthHeaderScrollRef = useRef<HTMLDivElement>(null);
+  const yearGridScrollRef = useRef<HTMLDivElement>(null);
+
+  function syncHorizontalScroll(
+    source: HTMLDivElement,
+    target: HTMLDivElement | null,
+  ) {
+    if (target && target.scrollLeft !== source.scrollLeft) {
+      target.scrollLeft = source.scrollLeft;
+    }
+  }
 
   function monthCellTone(monthId: string, monthIndex: number) {
     if (monthId === currentMonthId) {
@@ -2847,14 +2871,26 @@ function YearOverview({
       </div>
 
       <div
-        aria-label="Helårsöversikt, horisontellt rullningsbar vid behov"
-        className="mx-auto hidden max-w-[1560px] overflow-x-auto overscroll-x-contain lg:block"
-        role="region"
-        tabIndex={0}
+        className={`${desktopStickyMonthHeader} mx-auto hidden max-w-[1560px] lg:block`}
+        data-planning-month-header="sticky"
       >
-        <div className="grid w-full min-w-[1384px] grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]">
-          <div className={`${desktopStickyLabelCell} z-30 min-h-14 border-b border-stone-200`} />
-        <div className="flex min-h-14 flex-col items-center border-b border-stone-200 pb-3 pt-1 text-center text-[11px] font-semibold leading-none text-stone-500">
+        <div
+          className="overflow-x-auto overflow-y-hidden overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          data-planning-month-scroll="horizontal"
+          onScroll={(event) =>
+            syncHorizontalScroll(event.currentTarget, yearGridScrollRef.current)
+          }
+          ref={monthHeaderScrollRef}
+        >
+        <div
+          className="grid w-full min-w-[1384px] grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]"
+          data-planning-month-header-grid="true"
+        >
+          <div
+            className={`${desktopStickyLabelCell} z-20 min-h-14 border-b border-stone-200`}
+            data-planning-header-intersection="true"
+          />
+        <div className="relative z-10 flex min-h-14 flex-col items-center border-b border-stone-200 bg-white pb-3 pt-1 text-center text-[11px] font-semibold leading-none text-stone-500">
           <span className="flex h-4 items-center">ÅRET</span>
           <span aria-hidden="true" className="mt-1 h-3 text-[9px]">
             &nbsp;
@@ -2868,7 +2904,7 @@ function YearOverview({
           return (
             <button
               aria-pressed={selected}
-              className={`group relative flex min-h-14 flex-col items-center border-b border-stone-200 pb-3 pt-1 text-center text-[11px] font-semibold leading-none transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
+              className={`group relative z-10 flex min-h-14 flex-col items-center border-b border-stone-200 pb-3 pt-1 text-center text-[11px] font-semibold leading-none transition focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 ${
                 current
                   ? "bg-[#edf2ec] text-stone-950"
                   : selected
@@ -2902,6 +2938,22 @@ function YearOverview({
             </button>
           );
         })}
+        </div>
+        </div>
+      </div>
+
+      <div
+        aria-label="Helårsöversikt, horisontellt rullningsbar vid behov"
+        className="mx-auto hidden max-w-[1560px] overflow-x-auto overscroll-x-contain lg:block"
+        data-planning-year-scroll="horizontal"
+        onScroll={(event) =>
+          syncHorizontalScroll(event.currentTarget, monthHeaderScrollRef.current)
+        }
+        ref={yearGridScrollRef}
+        role="region"
+        tabIndex={0}
+      >
+        <div className="grid w-full min-w-[1384px] grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]">
 
         <DesktopSectionHeading first label="Inkomster & fördelningar" />
 
@@ -5686,6 +5738,10 @@ export default function Home() {
     [currentMonth.id, planningData],
   );
   const savingsOverview = useMemo(() => getSavingsOverview(planningData), [planningData]);
+  const financialHealth = useMemo(
+    () => evaluateFinancialHealth(planningData, monthIds),
+    [planningData],
+  );
   const completionSuggestion = useMemo(
     () => getPlanningCompletionSuggestion(planningData),
     [planningData],
@@ -6297,7 +6353,7 @@ export default function Home() {
       (!onboardingDismissed && shouldOfferPlanningOnboarding(planningData)));
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f7f5ef] text-stone-950">
+    <main className="min-h-screen overflow-x-clip bg-[#f7f5ef] text-stone-950">
       <header className="border-b border-stone-200/70 bg-[#faf9f6]/80 px-4 py-4 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-[1560px] items-center">
           <div className="flex items-center gap-2.5" aria-label="Fameko">
@@ -6515,6 +6571,8 @@ export default function Home() {
         <MobileUpcomingInsights insights={upcomingInsights} />
         <MobileLargestCosts costs={largestCosts} />
       </div>
+
+      <FinancialHealthCard result={financialHealth} />
 
       <PersonalEconomySection
         carData={planningData.carData}

@@ -8,6 +8,11 @@ import {
   getSavingsOverview,
   type SavingsOverviewGoal,
 } from "../../shared/planning/savings.ts";
+import {
+  emptyFinancialAssetsData,
+  type FinancialAssetsData,
+} from "../../shared/planning/financial-assets.ts";
+import { CurrencyInput } from "../components/currency-input.tsx";
 import { formatPreviewCurrency, formatPreviewPercentage } from "./personal-economy-card.tsx";
 import type { DetailPlanningData } from "./use-planning-detail.ts";
 
@@ -47,6 +52,19 @@ export function SavingsOverview({
     onChange(next);
     setDraft("");
     setFormOpen(false);
+  }
+
+  function updateFinancialAsset(
+    field: keyof FinancialAssetsData,
+    value: number | null,
+  ) {
+    onChange({
+      ...data,
+      financialAssetsData: {
+        ...(data.financialAssetsData ?? emptyFinancialAssetsData),
+        [field]: value,
+      },
+    });
   }
 
   return (
@@ -163,6 +181,56 @@ export function SavingsOverview({
         </ul>
         <p className="mt-5 text-xs leading-5 text-stone-400">
           Beloppen per månad redigeras i årsplaneringen. Den här sidan använder samma värden utan en separat sparmodell.
+        </p>
+      </section>
+
+      <section
+        aria-labelledby="financial-assets-title"
+        className="rounded-[24px] border border-stone-200/80 bg-white p-5 sm:p-7"
+        id="financial-assets"
+      >
+        <div className="max-w-2xl">
+          <h2
+            className="text-xl font-semibold tracking-[-0.025em] text-stone-950"
+            id="financial-assets-title"
+          >
+            Din ekonomiska grund
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-stone-500">
+            Valfritt. Uppgifterna hjälper Fameko ge en mer komplett bild av hushållets ekonomiska motståndskraft.
+          </p>
+        </div>
+
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <CurrencyInput
+            id="financial-asset-liquid-savings"
+            label="Privat buffert"
+            onChange={(value) => updateFinancialAsset("liquidSavings", value)}
+            value={data.financialAssetsData?.liquidSavings ?? null}
+          />
+          <CurrencyInput
+            id="financial-asset-investments"
+            label="Privata investeringar"
+            onChange={(value) => updateFinancialAsset("investments", value)}
+            value={data.financialAssetsData?.investments ?? null}
+          />
+          <CurrencyInput
+            id="financial-asset-private-pension"
+            label="Privat pensionssparande"
+            onChange={(value) => updateFinancialAsset("privatePension", value)}
+            value={data.financialAssetsData?.privatePension ?? null}
+          />
+          <CurrencyInput
+            id="financial-asset-other"
+            label="Andra finansiella tillgångar"
+            onChange={(value) =>
+              updateFinancialAsset("otherFinancialAssets", value)
+            }
+            value={data.financialAssetsData?.otherFinancialAssets ?? null}
+          />
+        </div>
+        <p className="mt-5 text-xs leading-5 text-stone-400">
+          Allmän pension och tjänstepension ingår inte. Privat pensionssparande behandlas långsiktigt och räknas inte som buffert.
         </p>
       </section>
     </div>
