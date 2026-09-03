@@ -55,6 +55,20 @@ export class PlanningRepository {
     return row ? mapPlanningYear(row) : null;
   }
 
+  async listYears(householdId: string): Promise<number[]> {
+    const result = await this.database
+      .prepare(
+        `SELECT year
+         FROM planning_years
+         WHERE household_id = ?
+         ORDER BY year ASC`,
+      )
+      .bind(householdId)
+      .all<{ year: number }>();
+
+    return result.results.map((row) => row.year);
+  }
+
   async create(
     householdId: string,
     year: number,

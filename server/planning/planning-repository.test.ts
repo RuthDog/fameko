@@ -225,3 +225,19 @@ test("every read and write remains scoped to the server-derived household", asyn
     await miniflare.dispose();
   }
 });
+
+test("year listing is sorted and scoped to the server-derived household", async () => {
+  const { database, miniflare } = await createDatabase();
+
+  try {
+    const repository = new PlanningRepository(database);
+    await repository.create("household-a", 2028, createPlanningData(), 3);
+    await repository.create("household-a", 2026, createPlanningData(), 3);
+    await repository.create("household-b", 2027, createPlanningData(), 3);
+
+    assert.deepEqual(await repository.listYears("household-a"), [2026, 2028]);
+    assert.deepEqual(await repository.listYears("household-b"), [2027]);
+  } finally {
+    await miniflare.dispose();
+  }
+});

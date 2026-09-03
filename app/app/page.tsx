@@ -45,6 +45,15 @@ import {
   updateExpenseItemInPlanningData,
   type ExpenseItemFrequency,
 } from "../../shared/planning/expense-item-edit.ts";
+import {
+  clonePlanningYearData,
+  getNextPlanningYear,
+  normalizePlanningYears,
+  readStoredActivePlanningYear,
+  storeActivePlanningYear as persistActivePlanningYear,
+  transferPlanningYearData,
+  type YearTransferStrategy,
+} from "../../shared/planning/year-management.ts";
 import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 import { PersonalEconomySection } from "./personal-economy-section.tsx";
 import {
@@ -296,14 +305,13 @@ const directAllocationCategoryIds = new Set(["mat", "sparande"]);
 const rowNameMaxLength = 48;
 const expenseIdentityMaxLength = 120;
 
-const planningYear = currentPlanningYear;
-const expenseFrequencyOptions: { value: ExpenseFrequency; label: string; interval: number | null }[] = [
-  { value: "once", label: "Engångskostnad", interval: null },
-  { value: "monthly", label: "Varje månad", interval: 1 },
-  { value: "everyTwoMonths", label: "Varannan månad", interval: 2 },
-  { value: "quarterly", label: "Var tredje månad", interval: 3 },
-  { value: "twiceYearly", label: "Var sjätte månad", interval: 6 },
-  { value: "yearly", label: "Varje år", interval: 12 },
+const expenseFrequencyOptions: { value: ExpenseFrequency; label: string }[] = [
+  { value: "once", label: "Engångskostnad" },
+  { value: "monthly", label: "Varje månad" },
+  { value: "everyTwoMonths", label: "Varannan månad" },
+  { value: "quarterly", label: "Var tredje månad" },
+  { value: "twiceYearly", label: "Var sjätte månad" },
+  { value: "yearly", label: "Varje år" },
 ];
 
 const initialMonths: ForecastMonth[] = [
@@ -770,12 +778,11 @@ const monthMetadata = seedSourceMonths.map(({ id, label, name, status }) => ({
 const monthIds = monthMetadata.map((month) => month.id);
 const defaultMonthId = monthIds[0];
 const storageKey = "fameko.planning-data.v3";
-const importDecisionKey = `fameko.cloud-import.v1.${planningYear}`;
 const showDevelopmentReset = process.env.NODE_ENV === "development";
 
 function getCurrentMonthId() {
   const today = new Date();
-  return today.getFullYear() === planningYear ? monthIds[today.getMonth()] : null;
+  return today.getFullYear() === currentPlanningYear ? monthIds[today.getMonth()] : null;
 }
 
 function getDefaultAllocationValue(
@@ -1289,22 +1296,22 @@ function savePlanningData(data: PlanningData) {
 const seedPlanningData: PlanningData = seedPlanningDataV3;
 const emptyPlanningData: PlanningData = emptyPlanningDataV3;
 
-function readImportDecision() {
+function readImportDecision(year: number) {
   if (typeof window === "undefined") {
     return null;
   }
 
   try {
-    return window.localStorage.getItem(importDecisionKey);
+    return window.localStorage.getItem(`fameko.cloud-import.v1.${year}`);
   } catch {
     return null;
   }
 }
 
-function saveImportDecision(decision: "imported" | "declined") {
+function saveImportDecision(year: number, decision: "imported" | "declined") {
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(importDecisionKey, decision);
+      window.localStorage.setItem(`fameko.cloud-import.v1.${year}`, decision);
     } catch {
       // Import remains safe even when the optional local marker is unavailable.
     }
@@ -1321,7 +1328,10 @@ class PlanningApiError extends Error {
   }
 }
 
-async function parsePlanningYearResponse(response: Response): Promise<CloudPlanningYear> {
+async function parsePlanningYearResponse(
+  response: Response,
+  expectedYear: number,
+): Promise<CloudPlanningYear> {
   const body: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -1342,7 +1352,7 @@ async function parsePlanningYearResponse(response: Response): Promise<CloudPlann
     result.schemaVersion !== 3 ||
     !Number.isInteger(result.revision) ||
     (result.revision as number) < 1 ||
-    result.year !== planningYear ||
+    result.year !== expectedYear ||
     typeof result.updatedAt !== "string"
   ) {
     throw new PlanningApiError("Servern skickade ett ogiltigt svar.", 500);
@@ -1355,8 +1365,8 @@ async function parsePlanningYearResponse(response: Response): Promise<CloudPlann
   };
 }
 
-async function loadCloudPlanningYear(): Promise<CloudPlanningYear | null> {
-  const response = await fetch(`/app/api/planning-years/${planningYear}`, {
+async function loadCloudPlanningYear(year: number): Promise<CloudPlanningYear | null> {
+  const response = await fetch(`/app/api/planning-years/${year}`, {
     cache: "no-store",
     credentials: "same-origin",
   });
@@ -1365,14 +1375,15 @@ async function loadCloudPlanningYear(): Promise<CloudPlanningYear | null> {
     return null;
   }
 
-  return parsePlanningYearResponse(response);
+  return parsePlanningYearResponse(response, year);
 }
 
 async function saveCloudPlanningYear(
   data: PlanningData,
   expectedRevision: number | null,
+  year: number,
 ): Promise<CloudPlanningYear> {
-  const response = await fetch(`/app/api/planning-years/${planningYear}`, {
+  const response = await fetch(`/app/api/planning-years/${year}`, {
     body: JSON.stringify({ data, expectedRevision }),
     cache: "no-store",
     credentials: "same-origin",
@@ -1380,8 +1391,8 @@ async function saveCloudPlanningYear(
     method: "PUT",
   });
 
-  const saved = await parsePlanningYearResponse(response);
-  const verified = await loadCloudPlanningYear();
+  const saved = await parsePlanningYearResponse(response, year);
+  const verified = await loadCloudPlanningYear(year);
 
   if (!verified) {
     throw new PlanningApiError("Den sparade ekonomin kunde inte verifieras.", 500);
@@ -1398,6 +1409,45 @@ async function saveCloudPlanningYear(
   }
 
   return verified;
+}
+
+async function loadCloudPlanningYears(): Promise<number[]> {
+  const response = await fetch("/app/api/planning-years", {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const body: unknown = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new PlanningApiError("Dina planeringsår kunde inte hämtas just nu.", response.status);
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new PlanningApiError("Servern skickade ett ogiltigt svar.", 500);
+  }
+
+  const years = (body as Record<string, unknown>).years;
+  if (!Array.isArray(years) || !years.every(Number.isInteger)) {
+    throw new PlanningApiError("Servern skickade ett ogiltigt svar.", 500);
+  }
+
+  return normalizePlanningYears(years as number[]);
+}
+
+function readActivePlanningYear(): number | null {
+  try {
+    return readStoredActivePlanningYear(window.localStorage, currentPlanningYear);
+  } catch {
+    return null;
+  }
+}
+
+function storeActivePlanningYear(year: number) {
+  try {
+    persistActivePlanningYear(window.localStorage, year);
+  } catch {
+    // The cloud year remains authoritative when optional local preferences are unavailable.
+  }
 }
 
 function getResolvedPlanningLabels(data: PlanningData): ResolvedPlanningLabels {
@@ -4239,10 +4289,12 @@ function ImportPlanningDataDialog({
   busy,
   onImport,
   onSkip,
+  planningYear,
 }: {
   busy: boolean;
   onImport: () => void;
   onSkip: () => void;
+  planningYear: number;
 }) {
   return (
     <div className="fixed inset-0 z-30 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
@@ -4642,19 +4694,266 @@ function MobileLargestCosts({ costs }: { costs: LargestCost[] }) {
   );
 }
 
-function YearNavigation() {
+function YearImpactSummary() {
+  return (
+    <div className="mt-5 rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-600">
+      <p className="font-medium text-stone-800">Detta kommer att påverka</p>
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+        {[
+          "Inkomster",
+          "Fördelningar",
+          "Räkningskonto",
+          "Sparande",
+          "Boende",
+          "Bil",
+        ].map((label) => (
+          <span className="flex items-center gap-2" key={label}>
+            <span aria-hidden="true" className="text-emerald-700">✓</span>
+            {label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-stone-500">Tidigare år påverkas inte.</p>
+    </div>
+  );
+}
+
+function CreatePlanningYearDialog({
+  busy,
+  mode,
+  onCancel,
+  onConfirm,
+  onModeChange,
+  sourceYear,
+  targetYear,
+}: {
+  busy: boolean;
+  mode: "copy" | "empty";
+  onCancel: () => void;
+  onConfirm: () => void;
+  onModeChange: (mode: "copy" | "empty") => void;
+  sourceYear: number;
+  targetYear: number;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-stone-950/25 px-4 py-8 backdrop-blur-[2px]">
+      <section
+        aria-labelledby="create-planning-year-title"
+        aria-modal="true"
+        className="w-full max-w-lg rounded-[20px] border border-stone-200 bg-white p-5 shadow-2xl sm:p-7"
+        role="dialog"
+      >
+        <p className={`${mobileTypography.metadata} text-stone-400`}>Skapa nytt år</p>
+        <h2 className="mt-1 text-2xl font-semibold text-stone-950" id="create-planning-year-title">
+          Skapa planering för {targetYear}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-stone-500">Hur vill du börja?</p>
+
+        <fieldset className="mt-5 grid gap-2">
+          {[
+            {
+              description: "Börja med Famekos tomma struktur och fyll i året i din egen takt.",
+              label: "Tom planering",
+              value: "empty" as const,
+            },
+            {
+              description: `Ta med hela ekonomin från ${sourceYear}, inklusive Boende och Bil.`,
+              label: `Kopiera hela ${sourceYear}`,
+              value: "copy" as const,
+            },
+          ].map((option) => (
+            <label
+              className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
+                mode === option.value
+                  ? "border-stone-500 bg-stone-50"
+                  : "border-stone-200 hover:border-stone-300"
+              }`}
+              key={option.value}
+            >
+              <input
+                checked={mode === option.value}
+                className="mt-1 h-4 w-4 accent-stone-950"
+                name="create-year-mode"
+                onChange={() => onModeChange(option.value)}
+                type="radio"
+              />
+              <span>
+                <span className="block text-sm font-medium text-stone-900">{option.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-500">
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <YearImpactSummary />
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-stone-100 pt-4">
+          <button
+            className="min-h-10 rounded-lg px-4 text-sm text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-10 rounded-lg bg-stone-950 px-5 text-sm font-medium text-white transition hover:bg-stone-700 disabled:bg-stone-300"
+            disabled={busy}
+            onClick={onConfirm}
+            type="button"
+          >
+            {busy ? "Skapar…" : "Skapa"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TransferPlanningYearDialog({
+  busy,
+  onCancel,
+  onConfirm,
+  onStrategyChange,
+  sourceYear,
+  strategy,
+  targetYear,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onStrategyChange: (strategy: YearTransferStrategy) => void;
+  sourceYear: number;
+  strategy: YearTransferStrategy;
+  targetYear: number;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-stone-950/25 px-4 py-8 backdrop-blur-[2px]">
+      <section
+        aria-labelledby="transfer-planning-year-title"
+        aria-modal="true"
+        className="w-full max-w-lg rounded-[20px] border border-stone-200 bg-white p-5 shadow-2xl sm:p-7"
+        role="dialog"
+      >
+        <p className={`${mobileTypography.metadata} text-stone-400`}>Överför ändringar</p>
+        <h2 className="mt-1 text-2xl font-semibold text-stone-950" id="transfer-planning-year-title">
+          Från {sourceYear} till {targetYear}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-stone-500">Hur vill du göra?</p>
+
+        <fieldset className="mt-5 grid gap-2">
+          {[
+            {
+              description: `Lägg till sådant från ${sourceYear} som ännu inte finns i ${targetYear}.`,
+              label: "Behåll befintligt",
+              value: "missing" as const,
+            },
+            {
+              description: `Ersätt ekonomin i ${targetYear} med den nuvarande planen för ${sourceYear}.`,
+              label: "Skriv över",
+              value: "overwrite" as const,
+            },
+          ].map((option) => (
+            <label
+              className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
+                strategy === option.value
+                  ? "border-stone-500 bg-stone-50"
+                  : "border-stone-200 hover:border-stone-300"
+              }`}
+              key={option.value}
+            >
+              <input
+                checked={strategy === option.value}
+                className="mt-1 h-4 w-4 accent-stone-950"
+                name="transfer-year-strategy"
+                onChange={() => onStrategyChange(option.value)}
+                type="radio"
+              />
+              <span>
+                <span className="block text-sm font-medium text-stone-900">{option.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-500">
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <YearImpactSummary />
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-stone-100 pt-4">
+          <button
+            className="min-h-10 rounded-lg px-4 text-sm text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-10 rounded-lg bg-stone-950 px-5 text-sm font-medium text-white transition hover:bg-stone-700 disabled:bg-stone-300"
+            disabled={busy}
+            onClick={onConfirm}
+            type="button"
+          >
+            {busy ? "Överför…" : strategy === "overwrite" ? "Skriv över" : "Överför"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function YearNavigation({
+  activeYear,
+  availableYears,
+  disabled,
+  onCreate,
+  onSelect,
+  onTransfer,
+}: {
+  activeYear: number;
+  availableYears: number[];
+  disabled: boolean;
+  onCreate: () => void;
+  onSelect: (year: number) => void;
+  onTransfer: () => void;
+}) {
+  const nextYear = getNextPlanningYear(activeYear);
+  const nextYearExists = availableYears.includes(nextYear);
+
   return (
     <section
       aria-label="Aktivt planeringsår"
-      className="mx-auto flex w-full max-w-[1560px] items-center gap-3 px-4 pb-5 sm:px-6 lg:px-8"
+      className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center gap-2 px-4 pb-5 sm:px-6 lg:px-8"
     >
       <span className={`${mobileTypography.metadata} text-stone-400 lg:text-xs lg:font-medium lg:leading-4`}>År</span>
-      <span
-        aria-current="date"
-        className={`rounded-md bg-[#e9eee7] px-3 py-1.5 ${mobileTypography.metadata} font-semibold text-stone-950 lg:text-sm`}
+      {availableYears.map((year) => (
+        <button
+          aria-current={year === activeYear ? "date" : undefined}
+          className={`min-h-9 rounded-lg px-3 ${mobileTypography.metadata} font-semibold transition lg:text-sm ${
+            year === activeYear
+              ? "bg-[#e9eee7] text-stone-950"
+              : "text-stone-500 hover:bg-stone-100 hover:text-stone-900"
+          }`}
+          disabled={disabled}
+          key={year}
+          onClick={() => onSelect(year)}
+          type="button"
+        >
+          {year}
+        </button>
+      ))}
+      <button
+        className={`ml-auto min-h-9 rounded-lg border border-stone-200 bg-white px-3 ${mobileTypography.metadata} font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950 disabled:cursor-not-allowed disabled:text-stone-300 lg:text-sm`}
+        disabled={disabled}
+        onClick={nextYearExists ? onTransfer : onCreate}
+        type="button"
       >
-        {planningYear}
-      </span>
+        {nextYearExists ? `Överför ändringar till ${nextYear}` : "+ Nytt år"}
+      </button>
     </section>
   );
 }
@@ -5171,6 +5470,8 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
 
 export default function Home() {
   const [planningData, setPlanningData] = useState(emptyPlanningData);
+  const [activePlanningYear, setActivePlanningYear] = useState(currentPlanningYear);
+  const [availablePlanningYears, setAvailablePlanningYears] = useState<number[]>([]);
   const [cloudLoadState, setCloudLoadState] = useState<CloudLoadState>("loading");
   const [cloudSaveState, setCloudSaveState] = useState<CloudSaveState>("idle");
   const [cloudMessage, setCloudMessage] = useState("Hämtar din ekonomi…");
@@ -5210,6 +5511,12 @@ export default function Home() {
   const [guidedSetupOpen, setGuidedSetupOpen] = useState(false);
   const [guidedSetupInitialGuide, setGuidedSetupInitialGuide] =
     useState<GuidedSetupGuideId | null>(null);
+  const [createYearDialogOpen, setCreateYearDialogOpen] = useState(false);
+  const [createYearMode, setCreateYearMode] = useState<"copy" | "empty">("copy");
+  const [transferYearDialogOpen, setTransferYearDialogOpen] = useState(false);
+  const [transferYearStrategy, setTransferYearStrategy] =
+    useState<YearTransferStrategy>("missing");
+  const [yearOperationBusy, setYearOperationBusy] = useState(false);
   const [addDraft, setAddDraft] = useState<AddExpenseDraft>({
     categoryId: "bil",
     company: "",
@@ -5236,12 +5543,28 @@ export default function Home() {
     }
 
     async function loadPlanningYear() {
+      let requestedYear = currentPlanningYear;
+
       try {
-        const serverPlanningYear = await loadCloudPlanningYear();
+        const existingYears = await loadCloudPlanningYears();
+        const preferredYear = readActivePlanningYear();
+        requestedYear =
+          preferredYear && existingYears.includes(preferredYear)
+            ? preferredYear
+            : existingYears.includes(currentPlanningYear)
+              ? currentPlanningYear
+              : existingYears.at(-1) ?? currentPlanningYear;
+        const serverPlanningYear = await loadCloudPlanningYear(requestedYear);
 
         if (cancelled) {
           return;
         }
+
+        setActivePlanningYear(requestedYear);
+        setAvailablePlanningYears(
+          existingYears.length ? existingYears : [requestedYear],
+        );
+        storeActivePlanningYear(requestedYear);
 
         if (serverPlanningYear) {
           setPlanningData(serverPlanningYear.data);
@@ -5255,7 +5578,7 @@ export default function Home() {
 
         const hasLocalChanges =
           storedData && JSON.stringify(storedData) !== JSON.stringify(emptyPlanningData);
-        if (hasLocalChanges && !readImportDecision()) {
+        if (hasLocalChanges && !readImportDecision(requestedYear)) {
           setPlanningData(storedData);
           setImportCandidate(storedData);
           setCloudLoadState("import");
@@ -5263,12 +5586,17 @@ export default function Home() {
           return;
         }
 
-        const created = await saveCloudPlanningYear(emptyPlanningData, null);
+        const created = await saveCloudPlanningYear(
+          clonePlanningYearData(emptyPlanningData),
+          null,
+          requestedYear,
+        );
         if (cancelled) {
           return;
         }
 
         setPlanningData(created.data);
+        setAvailablePlanningYears([requestedYear]);
         setCloudRevision(created.revision);
         setSavedSnapshot(JSON.stringify(created.data));
         savePlanningData(created.data);
@@ -5281,7 +5609,7 @@ export default function Home() {
 
         if (error instanceof PlanningApiError && error.status === 409) {
           try {
-            const serverPlanningYear = await loadCloudPlanningYear();
+            const serverPlanningYear = await loadCloudPlanningYear(requestedYear);
             if (serverPlanningYear && !cancelled) {
               setPlanningData(serverPlanningYear.data);
               setCloudRevision(serverPlanningYear.revision);
@@ -5384,6 +5712,10 @@ export default function Home() {
 
   function applyCloudPlanningYear(result: CloudPlanningYear, message = "") {
     setPlanningData(result.data);
+    setActivePlanningYear(result.year);
+    setAvailablePlanningYears((current) =>
+      normalizePlanningYears([...current, result.year]),
+    );
     setCloudRevision(result.revision);
     setSavedSnapshot(JSON.stringify(result.data));
     savePlanningData(result.data);
@@ -5391,6 +5723,7 @@ export default function Home() {
     setCloudLoadState("ready");
     setCloudSaveState("saved");
     setCloudMessage(message);
+    storeActivePlanningYear(result.year);
   }
 
   async function resolveLocalImport(importLocalData: boolean) {
@@ -5405,8 +5738,12 @@ export default function Home() {
       const result = await saveCloudPlanningYear(
         importLocalData ? importCandidate : emptyPlanningData,
         null,
+        activePlanningYear,
       );
-      saveImportDecision(importLocalData ? "imported" : "declined");
+      saveImportDecision(
+        activePlanningYear,
+        importLocalData ? "imported" : "declined",
+      );
       applyCloudPlanningYear(
         result,
         importLocalData ? "Lokal data importerad och sparad" : "Planeringsåret är klart",
@@ -5414,7 +5751,7 @@ export default function Home() {
     } catch (error) {
       if (error instanceof PlanningApiError && error.status === 409) {
         try {
-          const serverPlanningYear = await loadCloudPlanningYear();
+          const serverPlanningYear = await loadCloudPlanningYear(activePlanningYear);
           if (serverPlanningYear) {
             applyCloudPlanningYear(serverPlanningYear, "Planeringsåret hämtades från molnet");
             return;
@@ -5447,7 +5784,11 @@ export default function Home() {
     setCloudMessage("Sparar…");
 
     try {
-      const result = await saveCloudPlanningYear(dataToSave, cloudRevision);
+      const result = await saveCloudPlanningYear(
+        dataToSave,
+        cloudRevision,
+        activePlanningYear,
+      );
       setCloudRevision(result.revision);
       setSavedSnapshot(snapshotToSave);
       setCloudSaveState("saved");
@@ -5461,6 +5802,140 @@ export default function Home() {
 
       setCloudSaveState("error");
       setCloudMessage("Det gick inte att spara. Dina ändringar finns kvar på den här enheten.");
+    }
+  }
+
+  function canStartYearOperation() {
+    if (hasUnsavedChanges) {
+      setCloudMessage("Spara dina ändringar innan du hanterar planeringsår.");
+      return false;
+    }
+
+    return cloudLoadState === "ready" && !yearOperationBusy;
+  }
+
+  async function switchPlanningYear(year: number) {
+    if (year === activePlanningYear || !availablePlanningYears.includes(year)) {
+      return;
+    }
+
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Du har osparade ändringar. Vill du lämna året ändå?")
+    ) {
+      return;
+    }
+
+    setYearOperationBusy(true);
+    setCloudLoadState("loading");
+    setCloudMessage(`Hämtar planeringen för ${year}…`);
+
+    try {
+      const result = await loadCloudPlanningYear(year);
+      if (!result) {
+        throw new PlanningApiError("Planeringsåret finns inte längre.", 404);
+      }
+
+      applyCloudPlanningYear(result);
+    } catch {
+      setCloudLoadState("ready");
+      setCloudSaveState("error");
+      setCloudMessage("Planeringsåret kunde inte öppnas. Försök igen om en liten stund.");
+    } finally {
+      setYearOperationBusy(false);
+    }
+  }
+
+  function openCreatePlanningYear() {
+    if (!canStartYearOperation()) {
+      return;
+    }
+
+    setCreateYearMode("copy");
+    setCreateYearDialogOpen(true);
+  }
+
+  async function createPlanningYear() {
+    if (!canStartYearOperation()) {
+      return;
+    }
+
+    const targetYear = getNextPlanningYear(activePlanningYear);
+    if (availablePlanningYears.includes(targetYear)) {
+      setCreateYearDialogOpen(false);
+      setTransferYearDialogOpen(true);
+      return;
+    }
+
+    setYearOperationBusy(true);
+    setCloudSaveState("saving");
+    setCloudMessage(`Skapar planeringen för ${targetYear}…`);
+
+    try {
+      const data =
+        createYearMode === "copy"
+          ? clonePlanningYearData(planningData)
+          : clonePlanningYearData(emptyPlanningData);
+      const result = await saveCloudPlanningYear(data, null, targetYear);
+      applyCloudPlanningYear(result, `Planeringen för ${targetYear} är skapad`);
+      setCreateYearDialogOpen(false);
+    } catch (error) {
+      const conflict = error instanceof PlanningApiError && error.status === 409;
+      setCloudSaveState(conflict ? "conflict" : "error");
+      setCloudMessage(
+        conflict
+          ? `Planeringen för ${targetYear} finns redan. Ladda om sidan och försök igen.`
+          : "Det nya året kunde inte skapas. Försök igen om en liten stund.",
+      );
+    } finally {
+      setYearOperationBusy(false);
+    }
+  }
+
+  function openTransferPlanningYear() {
+    if (!canStartYearOperation()) {
+      return;
+    }
+
+    setTransferYearStrategy("missing");
+    setTransferYearDialogOpen(true);
+  }
+
+  async function transferToNextPlanningYear() {
+    if (!canStartYearOperation()) {
+      return;
+    }
+
+    const targetYear = getNextPlanningYear(activePlanningYear);
+    setYearOperationBusy(true);
+    setCloudSaveState("saving");
+    setCloudMessage(`Överför ändringar till ${targetYear}…`);
+
+    try {
+      const target = await loadCloudPlanningYear(targetYear);
+      if (!target) {
+        throw new PlanningApiError("Planeringsåret finns inte längre.", 404);
+      }
+
+      const transferred = transferPlanningYearData(
+        planningData,
+        target.data,
+        transferYearStrategy,
+      );
+      await saveCloudPlanningYear(transferred, target.revision, targetYear);
+      setCloudSaveState("saved");
+      setCloudMessage(`Ändringarna har överförts till ${targetYear}`);
+      setTransferYearDialogOpen(false);
+    } catch (error) {
+      const conflict = error instanceof PlanningApiError && error.status === 409;
+      setCloudSaveState(conflict ? "conflict" : "error");
+      setCloudMessage(
+        conflict
+          ? `${targetYear} har ändrats på en annan plats. Ladda om innan du försöker igen.`
+          : "Ändringarna kunde inte överföras. Försök igen om en liten stund.",
+      );
+    } finally {
+      setYearOperationBusy(false);
     }
   }
 
@@ -5960,8 +6435,16 @@ export default function Home() {
 
       <EconomicOverview month={currentMonth} />
 
+      <YearNavigation
+        activeYear={activePlanningYear}
+        availableYears={availablePlanningYears}
+        disabled={cloudLoadState !== "ready" || yearOperationBusy}
+        onCreate={openCreatePlanningYear}
+        onSelect={(year) => void switchPlanningYear(year)}
+        onTransfer={openTransferPlanningYear}
+      />
+
       <div className="hidden lg:block">
-        <YearNavigation />
         <YearOverview
           currentMonthId={currentMonthId}
           editingKey={editingTarget ? amountKey(editingTarget) : null}
@@ -6064,7 +6547,6 @@ export default function Home() {
 
         {annualPlanningOpen ? (
           <div className="-mx-4 mt-7 sm:-mx-6" id="mobile-full-year-planning">
-            <YearNavigation />
             <YearOverview
               currentMonthId={currentMonthId}
               editingKey={editingTarget ? amountKey(editingTarget) : null}
@@ -6186,11 +6668,36 @@ export default function Home() {
         />
       ) : null}
 
+      {createYearDialogOpen ? (
+        <CreatePlanningYearDialog
+          busy={yearOperationBusy}
+          mode={createYearMode}
+          onCancel={() => setCreateYearDialogOpen(false)}
+          onConfirm={() => void createPlanningYear()}
+          onModeChange={setCreateYearMode}
+          sourceYear={activePlanningYear}
+          targetYear={getNextPlanningYear(activePlanningYear)}
+        />
+      ) : null}
+
+      {transferYearDialogOpen ? (
+        <TransferPlanningYearDialog
+          busy={yearOperationBusy}
+          onCancel={() => setTransferYearDialogOpen(false)}
+          onConfirm={() => void transferToNextPlanningYear()}
+          onStrategyChange={setTransferYearStrategy}
+          sourceYear={activePlanningYear}
+          strategy={transferYearStrategy}
+          targetYear={getNextPlanningYear(activePlanningYear)}
+        />
+      ) : null}
+
       {cloudLoadState === "import" && importCandidate ? (
         <ImportPlanningDataDialog
           busy={importBusy}
           onImport={() => void resolveLocalImport(true)}
           onSkip={() => void resolveLocalImport(false)}
+          planningYear={activePlanningYear}
         />
       ) : null}
     </main>

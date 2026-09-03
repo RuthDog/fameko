@@ -57,9 +57,11 @@ test("non-monthly questions always request the next payment month", () => {
   assert.match(guidedSetupSource, /Betalningsmånad/);
 });
 
-test("the year display has no false interactive controls", () => {
+test("the year display exposes only real PlanningYears and working year actions", () => {
   assert.match(workspaceSource, /aria-label="Aktivt planeringsår"/);
   assert.doesNotMatch(workspaceSource, /const planningYears/);
   assert.doesNotMatch(workspaceSource, /Uppdatera från föregående år/);
-  assert.doesNotMatch(workspaceSource, /\+ Nytt år/);
+  assert.match(workspaceSource, /availableYears\.map/);
+  assert.match(workspaceSource, /"\+ Nytt år"/);
+  assert.match(workspaceSource, /onClick=\{nextYearExists \? onTransfer : onCreate\}/);
 });

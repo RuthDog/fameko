@@ -23,6 +23,16 @@ export function getDevelopmentPlanningYear(
   return developmentPlanningYears.get(planningYearKey(householdId, year)) ?? null;
 }
 
+export function listDevelopmentPlanningYears(householdId: string): number[] {
+  const prefix = `${householdId}:`;
+
+  return [...developmentPlanningYears.keys()]
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => Number(key.slice(prefix.length)))
+    .filter(Number.isInteger)
+    .sort((first, second) => first - second);
+}
+
 export function saveDevelopmentPlanningYear(
   householdId: string,
   year: number,

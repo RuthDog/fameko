@@ -6,6 +6,7 @@ import { isCarData, type CarData } from "../../shared/planning/car.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
 import { currentPlanningYear } from "../../shared/planning/seed-planning-data.ts";
 import { migrateLegacySavingsStructure } from "../../shared/planning/savings.ts";
+import { readStoredActivePlanningYear } from "../../shared/planning/year-management.ts";
 import {
   hasUnsavedWorkspaceChanges,
   type WorkspaceSaveOperationState,
@@ -88,7 +89,10 @@ function isDetailPlanningData(value: unknown): value is DetailPlanningData {
   );
 }
 
-async function parsePlanningYearResponse(response: Response): Promise<CloudPlanningYear> {
+async function parsePlanningYearResponse(
+  response: Response,
+  expectedYear: number,
+): Promise<CloudPlanningYear> {
   const body: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -109,7 +113,7 @@ async function parsePlanningYearResponse(response: Response): Promise<CloudPlann
     result.schemaVersion !== 3 ||
     !Number.isInteger(result.revision) ||
     (result.revision as number) < 1 ||
-    result.year !== currentPlanningYear ||
+    result.year !== expectedYear ||
     typeof result.updatedAt !== "string"
   ) {
     throw new Error("Servern skickade ett ogiltigt svar.");
@@ -122,8 +126,8 @@ async function parsePlanningYearResponse(response: Response): Promise<CloudPlann
   };
 }
 
-async function loadPlanningYear(): Promise<CloudPlanningYear> {
-  const response = await fetch(`/app/api/planning-years/${currentPlanningYear}`, {
+async function loadPlanningYear(year: number): Promise<CloudPlanningYear> {
+  const response = await fetch(`/app/api/planning-years/${year}`, {
     cache: "no-store",
     credentials: "same-origin",
   });
@@ -132,22 +136,23 @@ async function loadPlanningYear(): Promise<CloudPlanningYear> {
     throw new Error("Öppna Workspace först så att ditt planeringsår kan skapas.");
   }
 
-  return parsePlanningYearResponse(response);
+  return parsePlanningYearResponse(response, year);
 }
 
 async function savePlanningYear(
   data: DetailPlanningData,
   expectedRevision: number,
+  year: number,
 ): Promise<CloudPlanningYear> {
-  const response = await fetch(`/app/api/planning-years/${currentPlanningYear}`, {
+  const response = await fetch(`/app/api/planning-years/${year}`, {
     body: JSON.stringify({ data, expectedRevision }),
     cache: "no-store",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     method: "PUT",
   });
-  const saved = await parsePlanningYearResponse(response);
-  const verified = await loadPlanningYear();
+  const saved = await parsePlanningYearResponse(response, year);
+  const verified = await loadPlanningYear(year);
 
   if (
     verified.revision !== saved.revision ||
@@ -174,23 +179,29 @@ export function usePlanningDetail() {
   const [revision, setRevision] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<DetailSaveState>("idle");
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const [planningYear, setPlanningYear] = useState(currentPlanningYear);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const planningYear = await loadPlanningYear();
+        const activeYear = readStoredActivePlanningYear(
+          window.localStorage,
+          currentPlanningYear,
+        );
+        const loadedPlanningYear = await loadPlanningYear(activeYear);
         if (cancelled) {
           return;
         }
 
-        setData(planningYear.data);
-        setRevision(planningYear.revision);
-        setSavedSnapshot(JSON.stringify(planningYear.data));
+        setPlanningYear(activeYear);
+        setData(loadedPlanningYear.data);
+        setRevision(loadedPlanningYear.revision);
+        setSavedSnapshot(JSON.stringify(loadedPlanningYear.data));
         setLoadState("ready");
         setMessage("");
-        cachePlanningData(planningYear.data);
+        cachePlanningData(loadedPlanningYear.data);
       } catch (error) {
         if (cancelled) {
           return;
@@ -229,7 +240,7 @@ export function usePlanningDetail() {
     setMessage("Sparar…");
 
     try {
-      const saved = await savePlanningYear(data, revision);
+      const saved = await savePlanningYear(data, revision, planningYear);
       setData(saved.data);
       setRevision(saved.revision);
       setSavedSnapshot(JSON.stringify(saved.data));
@@ -245,13 +256,14 @@ export function usePlanningDetail() {
           : "Det gick inte att spara. Dina ändringar finns kvar på den här enheten.",
       );
     }
-  }, [data, hasChanges, revision, saveState]);
+  }, [data, hasChanges, planningYear, revision, saveState]);
 
   return {
     data,
     hasChanges,
     loadState,
     message,
+    planningYear,
     save,
     saveState,
     updateData,
