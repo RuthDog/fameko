@@ -2,6 +2,7 @@ import {
   getEffectiveExpenseItemAmount,
   type EffectiveExpensePlanningSource,
 } from "./effective-values.ts";
+import { getExpenseItemPresentation } from "./expense-item-identity.ts";
 
 export type MobileInsightFrequency =
   | "once"
@@ -21,6 +22,8 @@ export type MobileInsightsPlanningSource = EffectiveExpensePlanningSource & {
   }>;
   expenseItems: Array<{
     category?: string;
+    company?: string;
+    description?: string;
     frequency?: MobileInsightFrequency;
     id: string;
     monthlyValues: Record<string, number>;
@@ -42,6 +45,7 @@ export type MobileInsightMonthSource = {
 };
 
 export type MobileInsightEvent = {
+  brandLabel?: string;
   detail?: string;
   id: string;
   itemLabel?: string;
@@ -64,6 +68,7 @@ type RankedInsightEvent = MobileInsightEvent & {
 
 type PlannedCost = {
   amount: number;
+  brandLabel?: string;
   id: string;
   itemLabel?: string;
   itemIds: string[];
@@ -124,7 +129,11 @@ function getPlannedCosts(
 
     const categoryLabel = item.category ? categoryLabels.get(item.category) : undefined;
     const groupId = categoryLabel && item.category ? `category-${item.category}` : `item-${item.id}`;
-    const label = categoryLabel ?? planningData.labels?.expenseItems?.[item.id] ?? item.name;
+    const presentation = getExpenseItemPresentation(
+      item,
+      planningData.labels?.expenseItems?.[item.id],
+    );
+    const label = categoryLabel ?? presentation.primaryLabel;
     const existingCost = groupedCosts.get(groupId);
 
     if (existingCost) {
@@ -133,6 +142,7 @@ function getPlannedCosts(
     } else {
       groupedCosts.set(groupId, {
         amount,
+        brandLabel: categoryLabel ? undefined : presentation.brandLabel,
         id: groupId,
         itemLabel: categoryLabel ? undefined : label,
         itemIds: [item.id],
@@ -148,6 +158,7 @@ function getPlannedCosts(
 
 function toPublicEvent(event: RankedInsightEvent): MobileInsightEvent {
   return {
+    brandLabel: event.brandLabel,
     detail: event.detail,
     id: event.id,
     itemLabel: event.itemLabel,
@@ -199,7 +210,11 @@ export function buildMobileUpcomingInsights({
         .filter((monthId) => monthId !== month.id)
         .map((monthId) => getEffectiveExpenseItemAmount(planningData, item, monthId))
         .filter((value) => value > 0);
-      const label = planningData.labels?.expenseItems?.[item.id] ?? item.name;
+      const presentation = getExpenseItemPresentation(
+        item,
+        planningData.labels?.expenseItems?.[item.id],
+      );
+      const label = presentation.primaryLabel;
       const futureStartsLikeMonthlyCost =
         item.frequency === undefined &&
         item.recurring &&
@@ -212,6 +227,7 @@ export function buildMobileUpcomingInsights({
 
       if (isNewCost) {
         events.push({
+          brandLabel: presentation.brandLabel,
           detail: `${formatCurrency(amount)}/mån`,
           id: `${month.id}-${item.id}-new`,
           itemLabel: label,
@@ -237,6 +253,7 @@ export function buildMobileUpcomingInsights({
         futureAmounts.every((value) => value === 0)
       ) {
         events.push({
+          brandLabel: presentation.brandLabel,
           detail: `${formatCurrency(previousAmount)}/mån försvinner ur planeringen.`,
           id: `${month.id}-${item.id}-ending`,
           itemLabel: label,
@@ -250,6 +267,7 @@ export function buildMobileUpcomingInsights({
 
       if (item.frequency === "yearly" && amount > 0) {
         events.push({
+          brandLabel: presentation.brandLabel,
           detail: `${formatCurrency(amount)} · Dags att se över priset.`,
           id: `${month.id}-${item.id}-annual`,
           itemLabel: label,
@@ -268,6 +286,7 @@ export function buildMobileUpcomingInsights({
         (item.frequency === "once" || !item.recurring)
       ) {
         events.push({
+          brandLabel: presentation.brandLabel,
           detail: formatCurrency(amount),
           id: `${month.id}-${item.id}-one-off`,
           itemLabel: label,
@@ -288,6 +307,7 @@ export function buildMobileUpcomingInsights({
         amount - normalActiveAmount >= 1_000
       ) {
         events.push({
+          brandLabel: presentation.brandLabel,
           detail: formatCurrency(amount),
           id: `${month.id}-${item.id}-unusual`,
           itemLabel: label,
@@ -348,6 +368,7 @@ export function buildMobileUpcomingInsights({
       }
 
       selectedEvents.push({
+        brandLabel: plannedCost.brandLabel,
         detail: formatCurrency(plannedCost.amount),
         id: `${month.id}-${plannedCost.id}-planned`,
         itemLabel: plannedCost.itemLabel,

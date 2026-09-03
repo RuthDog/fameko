@@ -9,7 +9,7 @@ const nextConfigSource = readFileSync("next.config.ts", "utf8");
 
 test("annual planning and mobile underposts use the shared recognized brand component", () => {
   const itemUsages = workspaceSource.match(
-    /<RecognizedBrandLogo name=\{item\.name\} size=\{18\} \/>/g,
+    /<RecognizedBrandLogo name=\{item\.brandLabel \?\? item\.name\} size=\{18\} \/>/g,
   );
 
   assert.equal(itemUsages?.length, 2);
@@ -22,9 +22,9 @@ test("annual planning and mobile underposts use the shared recognized brand comp
 test("concrete upcoming insight items use BrandLogo while category insights keep Fameko markers", () => {
   assert.match(
     workspaceSource,
-    /name=\{event\.itemLabel\}[\s\S]*?size=\{18\}/,
+    /name=\{event\.brandLabel\}[\s\S]*?size=\{18\}/,
   );
-  assert.match(workspaceSource, /return event\.itemLabel \? \(/);
+  assert.match(workspaceSource, /return event\.brandLabel \? \(/);
   assert.match(workspaceSource, /<MobileInsightEventMarker event=\{event\} \/>/);
 });
 
@@ -35,8 +35,23 @@ test("Guided Setup known brand choices use the same resolver-backed component", 
   );
   assert.match(
     guidedSetupSource,
-    /<RecognizedBrandLogo name=\{existing\.label\} \/>/,
+    /<RecognizedBrandLogo name=\{existing\.brandLabel\} \/>/,
   );
+});
+
+test("add expense keeps separate fields while table rendering uses one text row", () => {
+  const companyPosition = workspaceSource.indexOf("Företag");
+  const descriptionPosition = workspaceSource.indexOf("Beskrivning", companyPosition);
+  const amountPosition = workspaceSource.indexOf("Belopp", descriptionPosition);
+
+  assert.ok(companyPosition > 0);
+  assert.ok(descriptionPosition > companyPosition);
+  assert.ok(amountPosition > descriptionPosition);
+  assert.match(workspaceSource, /createExpenseItemIdentity\(draft\.company, draft\.description\)/);
+  assert.doesNotMatch(workspaceSource, /item\.description \? \(/);
+  assert.doesNotMatch(guidedSetupSource, /existing\.secondaryLabel/);
+  assert.equal(workspaceSource.match(/\s+wrap\n/g)?.length, 2);
+  assert.match(workspaceSource, /wrap \? "break-words whitespace-normal" : "truncate"/);
 });
 
 test("missing configuration and failed Logo.dev images have silent fallbacks", () => {

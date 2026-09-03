@@ -215,7 +215,7 @@ function TemplateQuestion({
         <div className="mt-6 rounded-2xl border border-stone-200 bg-white px-4 py-4">
           <p className="text-xs font-medium text-stone-500">Finns i din planering</p>
           <p className="mt-2 flex items-center gap-2 text-lg font-semibold text-stone-950">
-            <RecognizedBrandLogo name={existing.label} />
+            <RecognizedBrandLogo name={existing.brandLabel} />
             <span>{existing.label}</span>
           </p>
           <p className="mt-1 text-sm text-stone-600">

@@ -20,6 +20,8 @@ type DetailIncome = {
 
 export type DetailExpenseItem = {
   category: string;
+  company?: string;
+  description?: string;
   frequency?: string;
   id: string;
   monthlyValues: Record<string, number>;

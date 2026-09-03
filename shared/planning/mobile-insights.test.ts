@@ -70,18 +70,21 @@ test("concrete insight events expose their item label for shared brand recogniti
     planningData: {
       expenseItems: [
         {
+          company: "Telia",
+          description: "Mobilabonnemang",
           frequency: "monthly",
           id: "telia-mobile",
           monthlyValues: { jan: 0, feb: 699, mar: 699, apr: 699, maj: 699 },
-          name: "Telia",
+          name: "Äldre namn",
           recurring: true,
         },
       ],
     },
   });
 
-  assert.equal(insights[0].events[0].title, "Telia börjar.");
-  assert.equal(insights[0].events[0].itemLabel, "Telia");
+  assert.equal(insights[0].events[0].title, "Telia Mobilabonnemang börjar.");
+  assert.equal(insights[0].events[0].itemLabel, "Telia Mobilabonnemang");
+  assert.equal(insights[0].events[0].brandLabel, "Telia");
 });
 
 test("calm months show the four largest planned cost categories instead of a stable message", () => {

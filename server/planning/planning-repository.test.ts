@@ -88,6 +88,24 @@ test("PlanningData v3 validation accepts the complete Workspace shape", () => {
   assert.equal(
     isPlanningData({
       ...createPlanningData(),
+      expenseItems: [
+        {
+          category: "streaming",
+          company: "Spotify",
+          description: "Premium Family",
+          frequency: "monthly",
+          id: "spotify-family",
+          monthlyValues: createPlanningData().expenseItems[0].monthlyValues,
+          name: "Spotify",
+          recurring: true,
+        },
+      ],
+    }),
+    true,
+  );
+  assert.equal(
+    isPlanningData({
+      ...createPlanningData(),
       housingData: { ...housingData, averageInterestRate: 101 },
     }),
     false,

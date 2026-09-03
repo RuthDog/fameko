@@ -58,6 +58,10 @@ function isNonEmptyString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
 }
 
+function isOptionalString(value: unknown, maxLength: number): value is string | undefined {
+  return value === undefined || (typeof value === "string" && value.length <= maxLength);
+}
+
 function isAmount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= maxAmount;
 }
@@ -152,10 +156,21 @@ function isExpenseCategory(value: unknown): boolean {
 function isExpenseItem(value: unknown): boolean {
   return (
     isObject(value) &&
-    hasOnlyKeys(value, ["id", "category", "name", "monthlyValues", "recurring", "frequency"]) &&
+    hasOnlyKeys(value, [
+      "id",
+      "category",
+      "name",
+      "company",
+      "description",
+      "monthlyValues",
+      "recurring",
+      "frequency",
+    ]) &&
     isNonEmptyString(value.id, maxIdLength) &&
     isNonEmptyString(value.category, maxIdLength) &&
     isNonEmptyString(value.name, maxNameLength) &&
+    isOptionalString(value.company, maxNameLength) &&
+    isOptionalString(value.description, maxNameLength) &&
     typeof value.recurring === "boolean" &&
     (value.frequency === undefined ||
       (typeof value.frequency === "string" && frequencies.includes(value.frequency as (typeof frequencies)[number]))) &&

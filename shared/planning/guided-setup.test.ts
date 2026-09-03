@@ -125,6 +125,10 @@ test("Netflix and Spotify create exactly their two existing stable rows", () => 
 
   assert.equal(data.expenseItems.find((item) => item.id === "streaming-netflix")?.monthlyValues.sep, 179);
   assert.equal(data.expenseItems.find((item) => item.id === "streaming-spotify")?.monthlyValues.sep, 119);
+  assert.equal(data.expenseItems.find((item) => item.id === "streaming-netflix")?.company, "Netflix");
+  assert.equal(data.expenseItems.find((item) => item.id === "streaming-spotify")?.company, "Spotify");
+  assert.equal(data.expenseItems.find((item) => item.id === "streaming-spotify")?.description, "");
+  assert.equal(getGuidedSetupExpense(data, "subscription.spotify")?.brandLabel, "Spotify");
   assert.equal(data.expenseItems.filter((item) => ["streaming-netflix", "streaming-spotify"].includes(item.id)).length, 2);
 });
 

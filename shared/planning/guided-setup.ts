@@ -1,3 +1,6 @@
+import { resolveBrand } from "../brand/brand-recognition.ts";
+import { getExpenseItemPresentation } from "./expense-item-identity.ts";
+
 export const guidedSetupMonthIds = [
   "jan",
   "feb",
@@ -29,6 +32,8 @@ export type GuidedSetupPlanningData = {
   expenseCategories: Array<{ id: string; name: string; order: number }>;
   expenseItems: Array<{
     category: string;
+    company?: string;
+    description?: string;
     frequency?: "once" | "monthly" | "everyTwoMonths" | "quarterly" | "twiceYearly" | "yearly";
     id: string;
     monthlyValues: MonthValues;
@@ -57,6 +62,9 @@ export type GuidedSetupTemplate = {
 
 export type GuidedSetupExpenseValue = {
   amount: number;
+  brandLabel: string;
+  company: string | null;
+  description: string | null;
   frequency: GuidedSetupFrequency;
   itemId: string;
   label: string;
@@ -427,9 +435,16 @@ export function getGuidedSetupExpense(
       (monthId, monthIndex) =>
         monthIndex >= currentMonthIndex && (item.monthlyValues[monthId] ?? 0) > 0,
     ) ?? currentMonth;
+  const presentation = getExpenseItemPresentation(
+    item,
+    data.labels?.expenseItems?.[item.id],
+  );
 
   return {
     amount: item.monthlyValues[amountMonth] ?? 0,
+    brandLabel: presentation.brandLabel,
+    company: presentation.company,
+    description: presentation.description,
     frequency:
       item.frequency === "quarterly" ||
       item.frequency === "twiceYearly" ||
@@ -437,7 +452,7 @@ export function getGuidedSetupExpense(
         ? item.frequency
         : "monthly",
     itemId: item.id,
-    label: data.labels?.expenseItems?.[item.id] ?? item.name,
+    label: presentation.primaryLabel,
     paymentMonth,
   };
 }
@@ -494,9 +509,14 @@ export function upsertGuidedSetupExpense<T extends GuidedSetupPlanningData>(
     frequency,
     paymentMonth,
   );
+  const resolvedBrand = resolveBrand(template.defaultItemName);
   const nextItem = {
     ...existing,
     category: template.categoryId,
+    company:
+      existing?.company?.trim() ||
+      (resolvedBrand.recognized ? resolvedBrand.displayName : ""),
+    description: existing?.description ?? "",
     frequency,
     id: existing?.id ?? template.itemId,
     monthlyValues: Object.fromEntries(

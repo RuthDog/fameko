@@ -35,6 +35,16 @@ import {
   type MobileInsightEvent,
   type MobileUpcomingInsight,
 } from "../../shared/planning/mobile-insights.ts";
+import {
+  createExpenseItemIdentity,
+  getExpenseItemPresentation,
+} from "../../shared/planning/expense-item-identity.ts";
+import {
+  buildExpenseItemMonthValues,
+  getExpenseItemEditDraft,
+  updateExpenseItemInPlanningData,
+  type ExpenseItemFrequency,
+} from "../../shared/planning/expense-item-edit.ts";
 import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
 import { PersonalEconomySection } from "./personal-economy-section.tsx";
 import {
@@ -73,16 +83,11 @@ import {
 } from "../../shared/ui/fameko-symbols.ts";
 import { RecognizedBrandLogo } from "../components/brand-logo.tsx";
 import { FamekoSymbol } from "../components/fameko-symbol.tsx";
+import { AnchoredContextMenu } from "../components/anchored-context-menu.tsx";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = PlanningEditScope;
-type ExpenseFrequency =
-  | "once"
-  | "monthly"
-  | "everyTwoMonths"
-  | "quarterly"
-  | "twiceYearly"
-  | "yearly";
+type ExpenseFrequency = ExpenseItemFrequency;
 type MonthValue = Record<string, number>;
 type IncomeLineKey = "salaryOne" | "salaryTwo" | "benefits" | "other";
 type IncomeLineValues = Partial<Record<IncomeLineKey, Partial<MonthValue>>>;
@@ -140,6 +145,8 @@ type ExpenseCategory = {
 type ExpenseItem = {
   id: string;
   category: string;
+  company?: string;
+  description?: string;
   name: string;
   monthlyValues: MonthValue;
   recurring: boolean;
@@ -172,6 +179,7 @@ type CloudLoadState = "loading" | "import" | "ready" | "error";
 type CloudSaveState = WorkspaceSaveOperationState;
 
 type ForecastExpenseItem = {
+  brandLabel?: string;
   id?: string;
   name: string;
   amount: string;
@@ -223,6 +231,7 @@ type YearRow = {
 
 type AddExpenseDraft = {
   categoryId: string;
+  company: string;
   description: string;
   amount: string;
   monthId: string;
@@ -285,6 +294,7 @@ const areaItemRows = mortgageRows;
 
 const directAllocationCategoryIds = new Set(["mat", "sparande"]);
 const rowNameMaxLength = 48;
+const expenseIdentityMaxLength = 120;
 
 const planningYear = currentPlanningYear;
 const expenseFrequencyOptions: { value: ExpenseFrequency; label: string; interval: number | null }[] = [
@@ -828,13 +838,21 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
           data.labels?.expenseCategories?.[category.id] ?? displayCategoryName(category.name),
         amount: formatAmount(categoryTotal),
         items: shouldShowItems
-          ? items.map((item) => ({
-              id: item.id,
-              name: data.labels?.expenseItems?.[item.id] ?? item.name,
-              amount: formatAmount(
-                getEffectiveExpenseItemAmount(data, item, metadata.id),
-              ),
-            }))
+          ? items.map((item) => {
+              const presentation = getExpenseItemPresentation(
+                item,
+                data.labels?.expenseItems?.[item.id],
+              );
+
+              return {
+                amount: formatAmount(
+                  getEffectiveExpenseItemAmount(data, item, metadata.id),
+                ),
+                brandLabel: presentation.brandLabel,
+                id: item.id,
+                name: presentation.primaryLabel,
+              };
+            })
           : undefined,
       };
     });
@@ -891,23 +909,6 @@ function buildForecastMonths(data: PlanningData): ForecastMonth[] {
     nextStartBalance = calculatedBalance;
     return month;
   });
-}
-
-function getFrequencyMonthIds(targetMonthId: string, frequency: ExpenseFrequency) {
-  const targetIndex = monthIds.indexOf(targetMonthId);
-
-  if (targetIndex < 0) {
-    return [];
-  }
-
-  const option = expenseFrequencyOptions.find((currentOption) => currentOption.value === frequency);
-  const interval = option?.interval;
-
-  if (!interval) {
-    return [targetMonthId];
-  }
-
-  return monthIds.filter((_, index) => index >= targetIndex && (index - targetIndex) % interval === 0);
 }
 
 function updatePlanningAmount(data: PlanningData, target: AmountTarget, nextAmount: string, scope: ChangeScope) {
@@ -1116,13 +1117,22 @@ function addExpenseToPlanningData(data: PlanningData, draft: AddExpenseDraft) {
     return data;
   }
 
-  const description = createUniqueExpenseName(data.expenseItems, category.id, draft.description);
-  const affectedMonthIds = getFrequencyMonthIds(draft.monthId, draft.frequency);
-  const monthlyValues = monthIds.reduce<MonthValue>((values, monthId) => {
-    values[monthId] = affectedMonthIds.includes(monthId) ? amount : 0;
-    return values;
-  }, {});
-  const id = createUniqueExpenseId(data.expenseItems, `${category.id}-${makeId(description)}`);
+  const identity = createExpenseItemIdentity(draft.company, draft.description);
+  const legacyName = createUniqueExpenseName(
+    data.expenseItems,
+    category.id,
+    identity.name,
+  );
+  const monthlyValues = buildExpenseItemMonthValues(
+    monthIds,
+    amount,
+    draft.monthId,
+    draft.frequency,
+  );
+  const id = createUniqueExpenseId(
+    data.expenseItems,
+    `${category.id}-${makeId(identity.company || identity.description || legacyName)}`,
+  );
 
   return {
     ...data,
@@ -1131,7 +1141,9 @@ function addExpenseToPlanningData(data: PlanningData, draft: AddExpenseDraft) {
       {
         id,
         category: category.id,
-        name: description,
+        company: identity.company,
+        description: identity.description,
+        name: legacyName,
         monthlyValues,
         recurring: draft.frequency !== "once",
         frequency: draft.frequency,
@@ -1235,6 +1247,11 @@ function isPlanningData(value: unknown): value is PlanningData {
         typeof item.id === "string" &&
         typeof item.category === "string" &&
         typeof item.name === "string" &&
+        (item.company === undefined ||
+          (typeof item.company === "string" && item.company.length <= expenseIdentityMaxLength)) &&
+        (item.description === undefined ||
+          (typeof item.description === "string" &&
+            item.description.length <= expenseIdentityMaxLength)) &&
         typeof item.recurring === "boolean" &&
         hasValidMonthValues(item.monthlyValues),
     )
@@ -1449,6 +1466,25 @@ function updatePlanningLabel(data: PlanningData, target: NameTarget, label: stri
 
     if (renamedSavingsData !== data) {
       return renamedSavingsData;
+    }
+
+    const item = data.expenseItems.find((expenseItem) => expenseItem.id === target.id);
+    if (item?.company?.trim()) {
+      return {
+        ...data,
+        expenseItems: data.expenseItems.map((expenseItem) =>
+          expenseItem.id === target.id ? { ...expenseItem, company: label } : expenseItem,
+        ),
+      };
+    }
+
+    if (item?.description?.trim()) {
+      return {
+        ...data,
+        expenseItems: data.expenseItems.map((expenseItem) =>
+          expenseItem.id === target.id ? { ...expenseItem, description: label } : expenseItem,
+        ),
+      };
     }
   }
 
@@ -2364,6 +2400,26 @@ function DesktopSavingsGoalAddRow({
   );
 }
 
+function ExpenseItemActionsMenu({
+  itemName,
+  onDelete,
+  onEdit,
+}: {
+  itemName: string;
+  onDelete: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <AnchoredContextMenu
+      ariaLabel={`Åtgärder för ${itemName}`}
+      items={[
+        { label: "Ändra", onSelect: onEdit },
+        { label: "Ta bort", onSelect: onDelete, tone: "destructive" },
+      ]}
+    />
+  );
+}
+
 function YearOverview({
   editingKey,
   editingValue,
@@ -2386,6 +2442,7 @@ function YearOverview({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onEditExpense,
   onRequestDelete,
   onOpenSavingsGoal,
   onSelectMonth,
@@ -2420,6 +2477,7 @@ function YearOverview({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onEditExpense: (itemId: string) => void;
   onRequestDelete: (target: DeleteTarget) => void;
   onOpenSavingsGoal: () => void;
   onSelectMonth: (monthId: string) => void;
@@ -2550,7 +2608,7 @@ function YearOverview({
                 >
                   <div className={`${itemIndent} flex min-w-0 items-center justify-between gap-2`}>
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <RecognizedBrandLogo name={item.name} size={18} />
+                      <RecognizedBrandLogo name={item.brandLabel ?? item.name} size={18} />
                       <div className="min-w-0 flex-1">
                         <EditableName
                           ariaLabel={`Redigera namnet ${item.name}`}
@@ -2563,13 +2621,13 @@ function YearOverview({
                           onChange={nameEditor.onChangeEdit}
                           onSave={nameEditor.onSaveEdit}
                           value={nameEditor.editingValue}
+                          wrap
                         />
                       </div>
                     </div>
-                    <button
-                      aria-label={`Ta bort ${item.name} från vald månad`}
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-stone-300 transition hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
-                      onClick={() =>
+                    <ExpenseItemActionsMenu
+                      itemName={item.name}
+                      onDelete={() =>
                         onRequestDelete({
                           type: "item",
                           monthId: selectedMonthId,
@@ -2578,11 +2636,8 @@ function YearOverview({
                           itemLabel: item.name,
                         })
                       }
-                      title="Ta bort"
-                      type="button"
-                    >
-                      ...
-                    </button>
+                      onEdit={() => onEditExpense(itemId)}
+                    />
                   </div>
                 </div>
                 <div
@@ -3152,6 +3207,7 @@ function EditableName({
   onChange,
   onSave,
   value,
+  wrap = false,
 }: {
   ariaLabel: string;
   cell?: boolean;
@@ -3163,6 +3219,7 @@ function EditableName({
   onChange: (value: string) => void;
   onSave: () => void;
   value: string;
+  wrap?: boolean;
 }) {
   if (editing) {
     return (
@@ -3203,7 +3260,9 @@ function EditableName({
       title={label}
       type="button"
     >
-      <span className="block truncate">{label}</span>
+      <span className={`block ${wrap ? "break-words whitespace-normal" : "truncate"}`}>
+        {label}
+      </span>
     </button>
   );
 }
@@ -3684,6 +3743,7 @@ function ExpenseList({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onEditExpense,
   onRequestDelete,
   onSaveEdit,
   onToggleCategory,
@@ -3699,6 +3759,7 @@ function ExpenseList({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onEditExpense: (itemId: string) => void;
   onRequestDelete: (target: DeleteTarget) => void;
   onSaveEdit: () => void;
   onToggleCategory: (monthId: string, categoryId: string) => void;
@@ -3780,7 +3841,7 @@ function ExpenseList({
                       key={itemId}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <RecognizedBrandLogo name={item.name} size={18} />
+                        <RecognizedBrandLogo name={item.brandLabel ?? item.name} size={18} />
                         <div className="min-w-0 flex-1">
                           <EditableName
                             ariaLabel={`Redigera namnet ${item.name}`}
@@ -3792,19 +3853,16 @@ function ExpenseList({
                             onChange={nameEditor.onChangeEdit}
                             onSave={nameEditor.onSaveEdit}
                             value={nameEditor.editingValue}
+                            wrap
                           />
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          aria-label={`Ta bort ${item.name}`}
-                          className="grid h-7 w-7 place-items-center rounded-full text-stone-300 transition hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
-                          onClick={() => onRequestDelete({ ...itemTarget, itemLabel: item.name })}
-                          title="Ta bort"
-                          type="button"
-                        >
-                          ...
-                        </button>
+                        <ExpenseItemActionsMenu
+                          itemName={item.name}
+                          onDelete={() => onRequestDelete({ ...itemTarget, itemLabel: item.name })}
+                          onEdit={() => onEditExpense(itemId)}
+                        />
                         <EditableAmount
                           amount={item.amount}
                           ariaLabel={`Redigera ${item.name} i ${month.name}, nu ${item.amount}`}
@@ -4027,6 +4085,7 @@ function DeleteScopeDialog({
 function AddExpenseDialog({
   categories,
   draft,
+  mode,
   months,
   onChangeDraft,
   onClose,
@@ -4034,6 +4093,7 @@ function AddExpenseDialog({
 }: {
   categories: ExpenseCategoryOption[];
   draft: AddExpenseDraft;
+  mode: "create" | "edit";
   months: ForecastMonth[];
   onChangeDraft: (draft: AddExpenseDraft) => void;
   onClose: () => void;
@@ -4066,7 +4126,9 @@ function AddExpenseDialog({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm text-stone-500">Planerad utgift</p>
-            <h3 className="mt-1 text-2xl font-semibold text-stone-950">Lägg till post</h3>
+            <h3 className="mt-1 text-2xl font-semibold text-stone-950">
+              {mode === "edit" ? "Ändra post" : "Lägg till post"}
+            </h3>
           </div>
           <button className="text-sm text-stone-400 hover:text-stone-950" onClick={onClose} type="button">
             Stäng
@@ -4092,11 +4154,23 @@ function AddExpenseDialog({
           </label>
 
           <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
+            Företag
+            <input
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none placeholder:text-stone-300"
+              maxLength={expenseIdentityMaxLength}
+              onChange={(event) => onChangeDraft({ ...draft, company: event.target.value })}
+              placeholder="Frivilligt, till exempel Spotify"
+              value={draft.company}
+            />
+          </label>
+
+          <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
             Beskrivning
             <input
               className="min-h-9 min-w-0 bg-white text-stone-950 outline-none placeholder:text-stone-300"
+              maxLength={expenseIdentityMaxLength}
               onChange={(event) => onChangeDraft({ ...draft, description: event.target.value })}
-              placeholder="Valfri"
+              placeholder="Frivilligt, till exempel Premium Family"
               value={draft.description}
             />
           </label>
@@ -4154,7 +4228,7 @@ function AddExpenseDialog({
           disabled={!canSave}
           type="submit"
         >
-          Spara
+          {mode === "edit" ? "Spara ändringar" : "Spara"}
         </button>
       </form>
     </div>
@@ -4373,11 +4447,11 @@ function MobileInsightEventMarker({ event }: { event: MobileInsightEvent }) {
       />
     );
 
-  return event.itemLabel ? (
+  return event.brandLabel ? (
     <RecognizedBrandLogo
       className="mt-0.5"
       fallback={fallback}
-      name={event.itemLabel}
+      name={event.brandLabel}
       size={18}
     />
   ) : (
@@ -4628,6 +4702,7 @@ function MonthDetail({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onEditExpense,
   onRequestDelete,
   onCancelSavingsGoal,
   onChangeSavingsGoalDraft,
@@ -4657,6 +4732,7 @@ function MonthDetail({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onEditExpense: (itemId: string) => void;
   onRequestDelete: (target: DeleteTarget) => void;
   onCancelSavingsGoal: () => void;
   onChangeSavingsGoalDraft: (value: string) => void;
@@ -4776,6 +4852,7 @@ function MonthDetail({
                 onBeginEdit={onBeginEdit}
                 onCancelEdit={onCancelEdit}
                 onChangeEdit={onChangeEdit}
+                onEditExpense={onEditExpense}
                 onRequestDelete={onRequestDelete}
                 onSaveEdit={onSaveEdit}
                 onToggleCategory={onToggleCategory}
@@ -4878,6 +4955,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
     onBeginEdit,
     onCancelEdit,
     onChangeEdit,
+    onEditExpense,
     onRequestDelete,
     onCancelSavingsGoal,
     onChangeSavingsGoalDraft,
@@ -5007,6 +5085,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
             onBeginEdit={onBeginEdit}
             onCancelEdit={onCancelEdit}
             onChangeEdit={onChangeEdit}
+            onEditExpense={onEditExpense}
             onRequestDelete={onRequestDelete}
             onSaveEdit={onSaveEdit}
             onToggleCategory={onToggleCategory}
@@ -5122,6 +5201,7 @@ export default function Home() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editingExpenseItemId, setEditingExpenseItemId] = useState<string | null>(null);
   const [annualPlanningOpen, setAnnualPlanningOpen] = useState(false);
   const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
   const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
@@ -5132,6 +5212,7 @@ export default function Home() {
     useState<GuidedSetupGuideId | null>(null);
   const [addDraft, setAddDraft] = useState<AddExpenseDraft>({
     categoryId: "bil",
+    company: "",
     description: "",
     amount: "",
     monthId: defaultMonthId,
@@ -5290,11 +5371,15 @@ export default function Home() {
 
   const categoryOptions = useMemo(
     () =>
-      getBillAccountCategories(selectedMonth).map((category) => ({
-        id: category.id!,
-        label: category.name,
-      })),
-    [selectedMonth],
+      [...planningData.expenseCategories]
+        .sort((first, second) => first.order - second.order)
+        .map((category) => ({
+          id: category.id,
+          label:
+            planningData.labels?.expenseCategories?.[category.id] ??
+            displayCategoryName(category.name),
+        })),
+    [planningData.expenseCategories, planningData.labels?.expenseCategories],
   );
 
   function applyCloudPlanningYear(result: CloudPlanningYear, message = "") {
@@ -5539,11 +5624,13 @@ export default function Home() {
   }
 
   function openAddDialog(categoryId?: string, monthId = selectedMonth.id) {
+    setEditingExpenseItemId(null);
     setAddDraft({
       categoryId:
         categoryId && categoryOptions.some((category) => category.id === categoryId)
           ? categoryId
           : categoryOptions[0]?.id ?? "boende",
+      company: "",
       description: "",
       amount: "",
       monthId,
@@ -5552,12 +5639,50 @@ export default function Home() {
     setAddDialogOpen(true);
   }
 
-  function saveAddedExpense() {
+  function openEditExpenseDialog(itemId: string) {
+    const item = planningData.expenseItems.find((expenseItem) => expenseItem.id === itemId);
+
+    if (!item) {
+      return;
+    }
+
+    const draft = getExpenseItemEditDraft(
+      item,
+      monthIds,
+      planningData.labels?.expenseItems?.[item.id],
+    );
+
+    setEditingExpenseItemId(item.id);
+    setAddDraft({
+      ...draft,
+      amount: String(draft.amount),
+    });
+    setAddDialogOpen(true);
+  }
+
+  function closeExpenseDialog() {
+    setAddDialogOpen(false);
+    setEditingExpenseItemId(null);
+  }
+
+  function saveExpenseDialog() {
     if (!isValidAddExpenseDraft(addDraft, categoryOptions.map((category) => category.id))) {
       return;
     }
 
-    setPlanningData((currentData) => addExpenseToPlanningData(currentData, addDraft));
+    setPlanningData((currentData) =>
+      editingExpenseItemId
+        ? updateExpenseItemInPlanningData(
+            currentData,
+            editingExpenseItemId,
+            {
+              ...addDraft,
+              amount: parseAmount(addDraft.amount),
+            },
+            monthIds,
+          )
+        : addExpenseToPlanningData(currentData, addDraft),
+    );
 
     setExpandedCategories((current) => ({
       ...current,
@@ -5571,7 +5696,7 @@ export default function Home() {
       [addDraft.categoryId]: true,
     }));
     setSelectedMonthId(addDraft.monthId);
-    setAddDialogOpen(false);
+    closeExpenseDialog();
   }
 
   function openSavingsGoalForm() {
@@ -5610,6 +5735,7 @@ export default function Home() {
     setPendingDelete(null);
     setScopeDialogOpen(false);
     setAddDialogOpen(false);
+    setEditingExpenseItemId(null);
     setAnnualPlanningOpen(false);
     setSavingsGoalDraft("");
     setSavingsGoalFormOpen(false);
@@ -5856,6 +5982,7 @@ export default function Home() {
           onBeginEdit={beginEdit}
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
+          onEditExpense={openEditExpenseDialog}
           onRequestDelete={requestDelete}
           onCancelSavingsGoal={cancelSavingsGoalForm}
           onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -5892,6 +6019,7 @@ export default function Home() {
           onBeginEdit={beginEdit}
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
+          onEditExpense={openEditExpenseDialog}
           onRequestDelete={requestDelete}
           onCancelSavingsGoal={cancelSavingsGoalForm}
           onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -5957,6 +6085,7 @@ export default function Home() {
               onBeginEdit={beginEdit}
               onCancelEdit={cancelEdit}
               onChangeEdit={setEditingValue}
+              onEditExpense={openEditExpenseDialog}
               onRequestDelete={requestDelete}
               onCancelSavingsGoal={cancelSavingsGoalForm}
               onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -5990,6 +6119,7 @@ export default function Home() {
               onBeginEdit={beginEdit}
               onCancelEdit={cancelEdit}
               onChangeEdit={setEditingValue}
+              onEditExpense={openEditExpenseDialog}
               onRequestDelete={requestDelete}
               onCancelSavingsGoal={cancelSavingsGoalForm}
               onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -6048,10 +6178,11 @@ export default function Home() {
         <AddExpenseDialog
           categories={categoryOptions}
           draft={addDraft}
+          mode={editingExpenseItemId ? "edit" : "create"}
           months={months}
           onChangeDraft={setAddDraft}
-          onClose={() => setAddDialogOpen(false)}
-          onSave={saveAddedExpense}
+          onClose={closeExpenseDialog}
+          onSave={saveExpenseDialog}
         />
       ) : null}
 
