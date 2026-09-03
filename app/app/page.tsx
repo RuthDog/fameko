@@ -17,11 +17,11 @@ import {
   applyScopedMonthValue,
   getAffectedMonthIds,
   getEffectiveExpenseCategoryAmount,
-  getEffectiveExpenseCategoryTotals,
   getEffectiveExpenseItemAmount,
   type PlanningEditScope,
 } from "../../shared/planning/effective-values.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
+import { getMajorHouseholdExpenses } from "../../shared/planning/major-household-expenses.ts";
 import {
   createSavingsGoal,
   getSavingsGoals,
@@ -1623,30 +1623,28 @@ function getCategoryYearTotal(months: ForecastMonth[], categoryId: string) {
 }
 
 function getLargestCosts(data: PlanningData): LargestCost[] {
-  const categories = getEffectiveExpenseCategoryTotals(data, monthIds)
-    .filter((category) => category.id !== "sparande")
-    .filter((category) => category.total > 0);
-  const totalCosts = categories.reduce((total, category) => total + category.total, 0);
-
-  return categories
-    .sort((first, second) => second.total - first.total)
-    .slice(0, 3)
-    .map((category, index) => {
-      const percentage =
-        totalCosts > 0 ? Math.round((category.total / totalCosts) * 100) : 0;
-
+  return getMajorHouseholdExpenses({ monthIds, planningData: data }).map(
+    (expense, index) => {
       return {
-        amount: formatAmount(category.total),
-        id: category.id,
+        amount: formatAmount(expense.annualAmount),
+        id: expense.id,
         insight:
           index === 0
-            ? `${category.name} är den största kostnaden och står för ${percentage} % av årets planerade kostnader.`
-            : `${category.name} står för ${percentage} % av årets planerade kostnader.`,
-        name: category.name,
-        percentage,
-        symbol: getExpenseCategorySymbolId(category.id),
+            ? `${expense.name} är den största kostnaden och står för ${expense.percentage} % av årets hushållskostnader.`
+            : `${expense.name} står för ${expense.percentage} % av årets hushållskostnader.`,
+        name: expense.name,
+        percentage: expense.percentage,
+        symbol:
+          expense.source.type === "housingData"
+            ? "mortgage"
+            : expense.source.type === "carData"
+              ? "car"
+              : expense.source.categoryId === "mortgageInterest"
+                ? "mortgage"
+                : getExpenseCategorySymbolId(expense.source.categoryId),
       };
-    });
+    },
+  );
 }
 
 function getItemYearTotal(months: ForecastMonth[], categoryId: string, itemId: string) {
@@ -4644,7 +4642,7 @@ function MobileLargestCosts({ costs }: { costs: LargestCost[] }) {
       className={`mx-auto w-full max-w-[1560px] ${mobileRhythm.section} pt-0`}
     >
       <MobileInsightHeading
-        description="De tre kostnadsområden som väger tyngst i årsplaneringen."
+        description="De tre kostnader som väger tyngst i hushållets ekonomi."
         id="mobile-largest-costs-title"
         illustrationSrc="/images/mobile-insights/largest-costs.webp"
         title="Mina största kostnader"
