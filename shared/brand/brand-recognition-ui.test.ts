@@ -50,7 +50,7 @@ test("add expense keeps separate fields while table rendering uses one text row"
   assert.match(workspaceSource, /createExpenseItemIdentity\(draft\.company, draft\.description\)/);
   assert.doesNotMatch(workspaceSource, /item\.description \? \(/);
   assert.doesNotMatch(guidedSetupSource, /existing\.secondaryLabel/);
-  assert.equal(workspaceSource.match(/\s+wrap\n/g)?.length, 2);
+  assert.equal(workspaceSource.match(/^\s+wrap\s*$/gm)?.length, 2);
   assert.match(workspaceSource, /wrap \? "break-words whitespace-normal" : "truncate"/);
 });
 
