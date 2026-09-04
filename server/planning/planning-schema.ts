@@ -1,6 +1,10 @@
 import { isCarData } from "../../shared/planning/car.ts";
 import { isFinancialAssetsData } from "../../shared/planning/financial-assets.ts";
 import { isHousingData } from "../../shared/planning/housing.ts";
+import {
+  isHouseholdProfile,
+  isIncomeMetadataMap,
+} from "../../shared/planning/income-metadata.ts";
 
 const monthIds = [
   "jan",
@@ -195,6 +199,8 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
       "housingData",
       "carData",
       "financialAssetsData",
+      "householdProfile",
+      "incomeMetadata",
     ])
   ) {
     return false;
@@ -219,7 +225,9 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
     (value.housingData === undefined || isHousingData(value.housingData)) &&
     (value.carData === undefined || isCarData(value.carData)) &&
     (value.financialAssetsData === undefined ||
-      isFinancialAssetsData(value.financialAssetsData))
+      isFinancialAssetsData(value.financialAssetsData)) &&
+    isHouseholdProfile(value.householdProfile) &&
+    isIncomeMetadataMap(value.incomeMetadata)
   );
 }
 

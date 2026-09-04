@@ -43,6 +43,15 @@ test("copies the complete year including HousingData, CarData and brand labels",
       otherFinancialAssets: null,
       privatePension: 80_000,
     },
+    householdProfile: { householdDisplayName: "Familjen Fischer" },
+    incomeMetadata: {
+      salaryOne: {
+        employer: "Halmstads kommun",
+        employmentType: "permanent",
+        occupation: "Avdelningschef",
+        incomeComment: null,
+      },
+    },
     labels: {
       expenseItems: { "streaming-spotify": "Spotify Premium Family" },
     },
@@ -54,6 +63,10 @@ test("copies the complete year including HousingData, CarData and brand labels",
   assert.notEqual(copy.housingData, source.housingData);
   assert.notEqual(copy.carData, source.carData);
   assert.notEqual(copy.financialAssetsData, source.financialAssetsData);
+  assert.notEqual(copy.incomeMetadata, source.incomeMetadata);
+  assert.notEqual(copy.householdProfile, source.householdProfile);
+  assert.deepEqual(copy.incomeMetadata, source.incomeMetadata);
+  assert.deepEqual(copy.householdProfile, source.householdProfile);
   assert.equal(copy.labels.expenseItems["streaming-spotify"], "Spotify Premium Family");
 });
 
@@ -113,6 +126,19 @@ test("overwrite replaces corresponding data and never mutates either year", () =
   assert.notEqual(overwritten, source);
   assert.deepEqual(source, sourceBefore);
   assert.deepEqual(target, targetBefore);
+});
+
+test("missing transfer carries optional income and household metadata with the year", () => {
+  const source = {
+    householdProfile: { householdDisplayName: "Familjen Fischer" },
+    incomeMetadata: {
+      salaryOne: { employer: "Halmstads kommun", employmentType: "permanent" },
+    },
+    version: 3,
+  };
+  const target = { version: 3 };
+
+  assert.deepEqual(transferPlanningYearData(source, target, "missing"), source);
 });
 
 test("year lists contain only real unique supported years", () => {

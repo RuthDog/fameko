@@ -26,6 +26,19 @@ import {
   type PlanningEditScope,
 } from "../../shared/planning/effective-values.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
+import {
+  employmentTypeLabels,
+  employmentTypes,
+  getIncomeMetadataDraft,
+  isHouseholdProfile,
+  isIncomeMetadataMap,
+  updateHouseholdDisplayName,
+  updateIncomeMetadata,
+  type HouseholdProfile,
+  type IncomeLineKey,
+  type IncomeMetadata,
+  type IncomeMetadataDraft,
+} from "../../shared/planning/income-metadata.ts";
 import { getMajorHouseholdExpenses } from "../../shared/planning/major-household-expenses.ts";
 import {
   createSavingsGoal,
@@ -104,12 +117,12 @@ import {
 import { RecognizedBrandLogo } from "../components/brand-logo.tsx";
 import { FamekoSymbol } from "../components/fameko-symbol.tsx";
 import { AnchoredContextMenu } from "../components/anchored-context-menu.tsx";
+import { BankReportEntryPoint } from "./bank-report-entry-point.tsx";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = PlanningEditScope;
 type ExpenseFrequency = ExpenseItemFrequency;
 type MonthValue = Record<string, number>;
-type IncomeLineKey = "salaryOne" | "salaryTwo" | "benefits" | "other";
 type IncomeLineValues = Partial<Record<IncomeLineKey, Partial<MonthValue>>>;
 type AllocationKey = "food" | "spending" | "billAccount" | "mortgage" | "savings";
 type AllocationOverrides = Partial<Record<AllocationKey, Partial<MonthValue>>>;
@@ -182,6 +195,8 @@ type PlanningData = {
   carData?: CarData;
   financialAssetsData?: FinancialAssetsData;
   housingData?: HousingData;
+  householdProfile?: HouseholdProfile;
+  incomeMetadata?: Partial<Record<IncomeLineKey, IncomeMetadata>>;
   allocationOverrides?: AllocationOverrides;
   areaItemValues?: AreaItemValues;
   incomeLineValues?: IncomeLineValues;
@@ -1244,6 +1259,8 @@ function isPlanningData(value: unknown): value is PlanningData {
   const hasValidFinancialAssetsData =
     data.financialAssetsData === undefined ||
     isFinancialAssetsData(data.financialAssetsData);
+  const hasValidIncomeMetadata = isIncomeMetadataMap(data.incomeMetadata);
+  const hasValidHouseholdProfile = isHouseholdProfile(data.householdProfile);
 
   return (
     data.version === 3 &&
@@ -1254,6 +1271,8 @@ function isPlanningData(value: unknown): value is PlanningData {
     hasValidHousingData &&
     hasValidCarData &&
     hasValidFinancialAssetsData &&
+    hasValidIncomeMetadata &&
+    hasValidHouseholdProfile &&
     typeof data.openingBalance === "number" &&
     Array.isArray(data.incomes) &&
     Array.isArray(data.expenseCategories) &&
@@ -2052,6 +2071,7 @@ function DesktopIncomeLineRow({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onEditMetadata,
   onSelectMonth,
   onSaveEdit,
 }: {
@@ -2065,6 +2085,7 @@ function DesktopIncomeLineRow({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onEditMetadata: (incomeLineKey: IncomeLineKey) => void;
   onSelectMonth: (monthId: string) => void;
   onSaveEdit: () => void;
 }) {
@@ -2075,18 +2096,28 @@ function DesktopIncomeLineRow({
       <div
         className={`${desktopStickyLabelCell} flex items-center border-b border-stone-100 py-3 pl-6 pr-2 text-sm text-stone-700`}
       >
-        <EditableName
-          ariaLabel={`Redigera namnet ${label}`}
-          cell
-          editing={nameEditor.editingKey === nameKey(nameTarget)}
-          editKey={nameKey(nameTarget)}
-          label={label}
-          onBeginEdit={() => nameEditor.onBeginEdit(nameTarget, label)}
-          onCancel={nameEditor.onCancelEdit}
-          onChange={nameEditor.onChangeEdit}
-          onSave={nameEditor.onSaveEdit}
-          value={nameEditor.editingValue}
-        />
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <EditableName
+            ariaLabel={`Redigera namnet ${label}`}
+            cell
+            editing={nameEditor.editingKey === nameKey(nameTarget)}
+            editKey={nameKey(nameTarget)}
+            label={label}
+            onBeginEdit={() => nameEditor.onBeginEdit(nameTarget, label)}
+            onCancel={nameEditor.onCancelEdit}
+            onChange={nameEditor.onChangeEdit}
+            onSave={nameEditor.onSaveEdit}
+            value={nameEditor.editingValue}
+          />
+          <button
+            aria-label={`Ändra fler uppgifter för ${label}`}
+            className="shrink-0 rounded-md px-1.5 py-1 text-[11px] font-medium text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-stone-900"
+            onClick={() => onEditMetadata(incomeLineKey)}
+            type="button"
+          >
+            Uppgifter
+          </button>
+        </div>
       </div>
       <div
         className="border-b border-stone-100 bg-stone-50/80 px-1 py-3 text-center text-xs font-medium text-stone-700 lg:text-sm"
@@ -2557,6 +2588,7 @@ function YearOverview({
   onCancelEdit,
   onChangeEdit,
   onEditExpense,
+  onEditIncomeMetadata,
   onEditSavingsGoal,
   onDeleteSavingsGoal,
   onRequestDelete,
@@ -2594,6 +2626,7 @@ function YearOverview({
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
   onEditExpense: (itemId: string) => void;
+  onEditIncomeMetadata: (incomeLineKey: IncomeLineKey) => void;
   onEditSavingsGoal: (goalId: string) => void;
   onDeleteSavingsGoal: (goal: SavingsGoalView) => void;
   onRequestDelete: (target: DeleteTarget) => void;
@@ -3041,6 +3074,7 @@ function YearOverview({
             onBeginEdit={onBeginEdit}
             onCancelEdit={onCancelEdit}
             onChangeEdit={onChangeEdit}
+            onEditMetadata={onEditIncomeMetadata}
             onSelectMonth={onSelectMonth}
             onSaveEdit={onSaveEdit}
           />
@@ -3590,6 +3624,7 @@ function MobileIncomeLine({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onEditMetadata,
   onSaveEdit,
 }: {
   editingKey: string | null;
@@ -3601,6 +3636,7 @@ function MobileIncomeLine({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onEditMetadata: (incomeLineKey: IncomeLineKey) => void;
   onSaveEdit: () => void;
 }) {
   const target: AmountTarget = { type: "incomeLine", monthId: month.id, incomeLineKey };
@@ -3609,7 +3645,7 @@ function MobileIncomeLine({
 
   return (
     <div className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.item} text-stone-600`}>
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1">
         <EditableName
           ariaLabel={`Redigera namnet ${label}`}
           editing={nameEditor.editingKey === nameKey(nameTarget)}
@@ -3621,6 +3657,14 @@ function MobileIncomeLine({
           onSave={nameEditor.onSaveEdit}
           value={nameEditor.editingValue}
         />
+        <button
+          aria-label={`Ändra fler uppgifter för ${label}`}
+          className="shrink-0 rounded-md px-1.5 py-1 text-[11px] font-medium text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-stone-900"
+          onClick={() => onEditMetadata(incomeLineKey)}
+          type="button"
+        >
+          Uppgifter
+        </button>
       </div>
       <EditableAmount
         amount={amount}
@@ -4517,6 +4561,229 @@ function AddExpenseDialog({
   );
 }
 
+function IncomeMetadataDialog({
+  amount,
+  draft,
+  label,
+  onChangeDraft,
+  onClose,
+  onSave,
+}: {
+  amount: string;
+  draft: IncomeMetadataDraft;
+  label: string;
+  onChangeDraft: (draft: IncomeMetadataDraft) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const [metadataOpen, setMetadataOpen] = useState(Boolean(
+    draft.employer || draft.employmentType || draft.occupation || draft.incomeComment
+  ));
+
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <form
+        aria-labelledby="income-metadata-title"
+        aria-modal="true"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave();
+        }}
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-stone-500">Inkomst</p>
+            <h3 className="mt-1 text-2xl font-semibold text-stone-950" id="income-metadata-title">
+              Ändra {label}
+            </h3>
+          </div>
+          <button className="text-sm text-stone-400 hover:text-stone-950" onClick={onClose} type="button">
+            Stäng
+          </button>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg border border-stone-200 bg-white px-3 py-3 text-sm">
+          <div className="min-w-0">
+            <p className="text-xs text-stone-400">Namn</p>
+            <p className="mt-1 truncate font-medium text-stone-800">{label}</p>
+          </div>
+          <div className="min-w-0 border-l border-stone-100 pl-3">
+            <p className="text-xs text-stone-400">Vald månad</p>
+            <p className="mt-1 font-medium tabular-nums text-stone-800">{amount}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-stone-400">
+          Namn och belopp ändras som vanligt direkt i planeringen.
+        </p>
+
+        <details
+          className="mt-5 rounded-lg border border-stone-200 bg-white"
+          onToggle={(event) => setMetadataOpen(event.currentTarget.open)}
+          open={metadataOpen}
+        >
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-800 marker:hidden">
+            <span className="flex items-center justify-between gap-4">
+              Fler uppgifter
+              <span aria-hidden="true" className="text-stone-400">⌄</span>
+            </span>
+          </summary>
+          <div className="border-t border-stone-100 px-4 pb-4 pt-3">
+            <p className="text-xs leading-5 text-stone-500">
+              Lägg till om du vill göra framtida ekonomiska sammanställningar mer kompletta.
+            </p>
+            <div className="mt-4 grid gap-4">
+              <label className="grid gap-1.5 text-sm text-stone-600">
+                Arbetsgivare <span className="sr-only">(frivilligt)</span>
+                <input
+                  autoFocus
+                  className="min-h-10 rounded-lg border border-stone-200 bg-white px-3 text-stone-950 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-950/5"
+                  maxLength={120}
+                  onChange={(event) => onChangeDraft({ ...draft, employer: event.target.value })}
+                  placeholder="Till exempel Halmstads kommun"
+                  value={draft.employer}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm text-stone-600">
+                Anställningsform <span className="sr-only">(frivilligt)</span>
+                <select
+                  className="min-h-10 rounded-lg border border-stone-200 bg-white px-3 text-stone-950 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-950/5"
+                  onChange={(event) => onChangeDraft({
+                    ...draft,
+                    employmentType: event.target.value as IncomeMetadataDraft["employmentType"],
+                  })}
+                  value={draft.employmentType}
+                >
+                  <option value="">Inte angivet</option>
+                  {employmentTypes.map((employmentType) => (
+                    <option key={employmentType} value={employmentType}>
+                      {employmentTypeLabels[employmentType]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1.5 text-sm text-stone-600">
+                Befattning <span className="sr-only">(frivilligt)</span>
+                <input
+                  className="min-h-10 rounded-lg border border-stone-200 bg-white px-3 text-stone-950 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-950/5"
+                  maxLength={120}
+                  onChange={(event) => onChangeDraft({ ...draft, occupation: event.target.value })}
+                  placeholder="Till exempel Avdelningschef"
+                  value={draft.occupation}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm text-stone-600">
+                Kommentar <span className="sr-only">(frivilligt)</span>
+                <textarea
+                  className="min-h-20 resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-stone-950 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-950/5"
+                  maxLength={280}
+                  onChange={(event) => onChangeDraft({ ...draft, incomeComment: event.target.value })}
+                  placeholder="Till exempel att bonus inte ingår i planeringen"
+                  value={draft.incomeComment}
+                />
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            className="min-h-10 rounded-lg px-4 text-sm font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-900"
+            onClick={onClose}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-10 rounded-lg bg-stone-950 px-5 text-sm font-medium text-white transition hover:bg-stone-700"
+            type="submit"
+          >
+            Spara uppgifter
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function HouseholdProfileDialog({
+  draft,
+  onChangeDraft,
+  onClose,
+  onSave,
+}: {
+  draft: string;
+  onChangeDraft: (draft: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <form
+        aria-labelledby="household-profile-title"
+        aria-modal="true"
+        className="w-full max-w-md rounded-xl border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave();
+        }}
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-stone-500">Hushåll</p>
+            <h3 className="mt-1 text-2xl font-semibold text-stone-950" id="household-profile-title">
+              Namn på hushållet
+            </h3>
+          </div>
+          <button className="text-sm text-stone-400 hover:text-stone-950" onClick={onClose} type="button">
+            Stäng
+          </button>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-stone-500">
+          Frivilligt. Namnet kan användas i framtida ekonomiska sammanställningar.
+        </p>
+        <label className="mt-5 grid gap-1.5 text-sm text-stone-600">
+          Hushållsnamn
+          <input
+            autoFocus
+            className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 text-stone-950 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-950/5"
+            maxLength={120}
+            onChange={(event) => onChangeDraft(event.target.value)}
+            placeholder="Till exempel Ola & Therese"
+            value={draft}
+          />
+        </label>
+        <div className="mt-6 flex justify-end gap-2">
+          <button className="min-h-10 rounded-lg px-4 text-sm font-medium text-stone-500 hover:bg-stone-100" onClick={onClose} type="button">
+            Avbryt
+          </button>
+          <button className="min-h-10 rounded-lg bg-stone-950 px-5 text-sm font-medium text-white hover:bg-stone-700" type="submit">
+            Spara
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ImportPlanningDataDialog({
   busy,
   onImport,
@@ -5142,14 +5409,18 @@ function YearNavigation({
   activeYear,
   availableYears,
   disabled,
+  householdDisplayName,
   onCreate,
+  onEditHousehold,
   onSelect,
   onTransfer,
 }: {
   activeYear: number;
   availableYears: number[];
   disabled: boolean;
+  householdDisplayName: string | null;
   onCreate: () => void;
+  onEditHousehold: () => void;
   onSelect: (year: number) => void;
   onTransfer: () => void;
 }) {
@@ -5178,6 +5449,15 @@ function YearNavigation({
           {year}
         </button>
       ))}
+      <button
+        className={`min-h-9 max-w-full truncate rounded-lg px-3 ${mobileTypography.metadata} font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 disabled:text-stone-300 lg:text-sm`}
+        disabled={disabled}
+        onClick={onEditHousehold}
+        title={householdDisplayName ?? "Lägg till ett frivilligt hushållsnamn"}
+        type="button"
+      >
+        {householdDisplayName ? `Hushåll: ${householdDisplayName}` : "+ Hushållsnamn"}
+      </button>
       <button
         className={`ml-auto min-h-9 rounded-lg border border-stone-200 bg-white px-3 ${mobileTypography.metadata} font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950 disabled:cursor-not-allowed disabled:text-stone-300 lg:text-sm`}
         disabled={disabled}
@@ -5234,6 +5514,7 @@ function MonthDetail({
   onCancelEdit,
   onChangeEdit,
   onEditExpense,
+  onEditIncomeMetadata,
   onEditSavingsGoal,
   onDeleteSavingsGoal,
   onRequestDelete,
@@ -5266,6 +5547,7 @@ function MonthDetail({
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
   onEditExpense: (itemId: string) => void;
+  onEditIncomeMetadata: (incomeLineKey: IncomeLineKey) => void;
   onEditSavingsGoal: (goalId: string) => void;
   onDeleteSavingsGoal: (goal: SavingsGoalView) => void;
   onRequestDelete: (target: DeleteTarget) => void;
@@ -5325,6 +5607,7 @@ function MonthDetail({
                   onBeginEdit={onBeginEdit}
                   onCancelEdit={onCancelEdit}
                   onChangeEdit={onChangeEdit}
+                  onEditMetadata={onEditIncomeMetadata}
                   onSaveEdit={onSaveEdit}
                 />
               ))}
@@ -5493,6 +5776,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
     onCancelEdit,
     onChangeEdit,
     onEditExpense,
+    onEditIncomeMetadata,
     onEditSavingsGoal,
     onDeleteSavingsGoal,
     onRequestDelete,
@@ -5560,6 +5844,7 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
               onBeginEdit={onBeginEdit}
               onCancelEdit={onCancelEdit}
               onChangeEdit={onChangeEdit}
+              onEditMetadata={onEditIncomeMetadata}
               onSaveEdit={onSaveEdit}
             />
           ))}
@@ -5745,6 +6030,16 @@ export default function Home() {
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingExpenseItemId, setEditingExpenseItemId] = useState<string | null>(null);
+  const [editingIncomeMetadataKey, setEditingIncomeMetadataKey] =
+    useState<IncomeLineKey | null>(null);
+  const [incomeMetadataDraft, setIncomeMetadataDraft] = useState<IncomeMetadataDraft>({
+    employer: "",
+    employmentType: "",
+    occupation: "",
+    incomeComment: "",
+  });
+  const [householdProfileDialogOpen, setHouseholdProfileDialogOpen] = useState(false);
+  const [householdDisplayNameDraft, setHouseholdDisplayNameDraft] = useState("");
   const [annualPlanningOpen, setAnnualPlanningOpen] = useState(false);
   const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
   const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
@@ -6365,6 +6660,44 @@ export default function Home() {
     setAddDialogOpen(true);
   }
 
+  function openIncomeMetadataDialog(incomeLineKey: IncomeLineKey) {
+    setEditingIncomeMetadataKey(incomeLineKey);
+    setIncomeMetadataDraft(getIncomeMetadataDraft(planningData, incomeLineKey));
+  }
+
+  function closeIncomeMetadataDialog() {
+    setEditingIncomeMetadataKey(null);
+  }
+
+  function saveIncomeMetadata() {
+    if (!editingIncomeMetadataKey) {
+      return;
+    }
+
+    setPlanningData((currentData) =>
+      updateIncomeMetadata(currentData, editingIncomeMetadataKey, incomeMetadataDraft),
+    );
+    closeIncomeMetadataDialog();
+  }
+
+  function openHouseholdProfileDialog() {
+    setHouseholdDisplayNameDraft(
+      planningData.householdProfile?.householdDisplayName ?? "",
+    );
+    setHouseholdProfileDialogOpen(true);
+  }
+
+  function closeHouseholdProfileDialog() {
+    setHouseholdProfileDialogOpen(false);
+  }
+
+  function saveHouseholdProfile() {
+    setPlanningData((currentData) =>
+      updateHouseholdDisplayName(currentData, householdDisplayNameDraft),
+    );
+    closeHouseholdProfileDialog();
+  }
+
   function openEditExpenseDialog(itemId: string) {
     const item = planningData.expenseItems.find((expenseItem) => expenseItem.id === itemId);
 
@@ -6730,7 +7063,9 @@ export default function Home() {
         activeYear={activePlanningYear}
         availableYears={availablePlanningYears}
         disabled={cloudLoadState !== "ready" || yearOperationBusy}
+        householdDisplayName={planningData.householdProfile?.householdDisplayName ?? null}
         onCreate={openCreatePlanningYear}
+        onEditHousehold={openHouseholdProfileDialog}
         onSelect={(year) => void switchPlanningYear(year)}
         onTransfer={openTransferPlanningYear}
       />
@@ -6757,6 +7092,7 @@ export default function Home() {
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
           onEditExpense={openEditExpenseDialog}
+          onEditIncomeMetadata={openIncomeMetadataDialog}
           onEditSavingsGoal={openSavingsGoalEditDialog}
           onDeleteSavingsGoal={requestSavingsGoalDelete}
           onRequestDelete={requestDelete}
@@ -6796,6 +7132,7 @@ export default function Home() {
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
           onEditExpense={openEditExpenseDialog}
+          onEditIncomeMetadata={openIncomeMetadataDialog}
           onEditSavingsGoal={openSavingsGoalEditDialog}
           onDeleteSavingsGoal={requestSavingsGoalDelete}
           onRequestDelete={requestDelete}
@@ -6821,6 +7158,8 @@ export default function Home() {
         housingData={planningData.housingData}
         savingsPreview={savingsPreview}
       />
+
+      <BankReportEntryPoint />
 
       <GuidedSetupEntryPoint
         onStart={openGuidedSetup}
@@ -6865,6 +7204,7 @@ export default function Home() {
               onCancelEdit={cancelEdit}
               onChangeEdit={setEditingValue}
               onEditExpense={openEditExpenseDialog}
+              onEditIncomeMetadata={openIncomeMetadataDialog}
               onEditSavingsGoal={openSavingsGoalEditDialog}
               onDeleteSavingsGoal={requestSavingsGoalDelete}
               onRequestDelete={requestDelete}
@@ -6901,6 +7241,7 @@ export default function Home() {
               onCancelEdit={cancelEdit}
               onChangeEdit={setEditingValue}
               onEditExpense={openEditExpenseDialog}
+              onEditIncomeMetadata={openIncomeMetadataDialog}
               onEditSavingsGoal={openSavingsGoalEditDialog}
               onDeleteSavingsGoal={requestSavingsGoalDelete}
               onRequestDelete={requestDelete}
@@ -6985,6 +7326,26 @@ export default function Home() {
           onChangeDraft={setAddDraft}
           onClose={closeExpenseDialog}
           onSave={saveExpenseDialog}
+        />
+      ) : null}
+
+      {editingIncomeMetadataKey ? (
+        <IncomeMetadataDialog
+          amount={getIncomeLineAmount(selectedMonth, editingIncomeMetadataKey)}
+          draft={incomeMetadataDraft}
+          label={labels.incomeLines[editingIncomeMetadataKey]}
+          onChangeDraft={setIncomeMetadataDraft}
+          onClose={closeIncomeMetadataDialog}
+          onSave={saveIncomeMetadata}
+        />
+      ) : null}
+
+      {householdProfileDialogOpen ? (
+        <HouseholdProfileDialog
+          draft={householdDisplayNameDraft}
+          onChangeDraft={setHouseholdDisplayNameDraft}
+          onClose={closeHouseholdProfileDialog}
+          onSave={saveHouseholdProfile}
         />
       ) : null}
 

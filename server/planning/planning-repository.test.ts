@@ -184,6 +184,36 @@ test("FinancialAssetsData round-trips in the authoritative PlanningData document
   }
 });
 
+test("optional income and household metadata round-trip in PlanningData without migration", async () => {
+  const { database, miniflare } = await createDatabase();
+
+  try {
+    const repository = new PlanningRepository(database);
+    const data = {
+      ...createPlanningData(),
+      householdProfile: { householdDisplayName: "Ola & Therese" },
+      incomeMetadata: {
+        salaryOne: {
+          employer: "Halmstads kommun",
+          employmentType: "permanent",
+          occupation: "Avdelningschef",
+          incomeComment: "Bonus ingår inte i planeringen",
+        },
+      },
+    } as const;
+    const created = await repository.create("household-a", 2026, data, 3);
+    assert.ok(created);
+
+    const stored = await repository.get("household-a", 2026);
+    assert.deepEqual(stored?.data.incomeMetadata, data.incomeMetadata);
+    assert.deepEqual(stored?.data.householdProfile, data.householdProfile);
+    assert.equal(stored?.data.incomeMetadata?.salaryOne.employmentType, "permanent");
+    assert.equal("salary" in stored!.data.incomeMetadata!.salaryOne, false);
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
 test("HousingData round-trips inside authoritative PlanningData", async () => {
   const { database, miniflare } = await createDatabase();
 

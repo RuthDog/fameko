@@ -8,6 +8,11 @@ import {
   type FinancialAssetsData,
 } from "../../shared/planning/financial-assets.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
+import type {
+  HouseholdProfile,
+  IncomeLineKey,
+  IncomeMetadata,
+} from "../../shared/planning/income-metadata.ts";
 import { currentPlanningYear } from "../../shared/planning/seed-planning-data.ts";
 import { migrateLegacySavingsStructure } from "../../shared/planning/savings.ts";
 import { readStoredActivePlanningYear } from "../../shared/planning/year-management.ts";
@@ -42,12 +47,15 @@ export type DetailPlanningData = {
   expenseItems: DetailExpenseItem[];
   financialAssetsData?: FinancialAssetsData;
   housingData?: HousingData;
+  householdProfile?: HouseholdProfile;
+  incomeMetadata?: Partial<Record<IncomeLineKey, IncomeMetadata>>;
   incomeLineValues?: Partial<Record<string, Partial<Record<string, number>>>>;
   incomes: DetailIncome[];
   labels?: {
     areaItems?: Record<string, string>;
     expenseCategories?: Record<string, string>;
     expenseItems?: Record<string, string>;
+    incomeLines?: Record<string, string>;
     [key: string]: unknown;
   };
   openingBalance: number;

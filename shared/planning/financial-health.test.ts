@@ -379,6 +379,27 @@ test("the caller-selected active PlanningYear fully controls the analysis", () =
   );
 });
 
+test("report-only income and household metadata never changes Financial Health", () => {
+  const data = createPlanningData();
+  const withMetadata = {
+    ...data,
+    householdProfile: { householdDisplayName: "Familjen Fischer" },
+    incomeMetadata: {
+      salaryOne: {
+        employer: "Halmstads kommun",
+        employmentType: "permanent",
+        occupation: "Avdelningschef",
+        incomeComment: "Bonus kan tillkomma",
+      },
+    },
+  };
+
+  assert.deepEqual(
+    evaluateFinancialHealth(withMetadata, savingsMonthIds),
+    evaluateFinancialHealth(data, savingsMonthIds),
+  );
+});
+
 test("the engine is read-only and deterministic", () => {
   const data = createPlanningData();
   const snapshot = structuredClone(data);

@@ -19,6 +19,22 @@ test("one snapshot comparison marks every Workspace module dirty", () => {
   assert.equal(hasUnsavedWorkspaceChanges(true, saved, severalChanges), true);
 });
 
+test("income and household metadata use the same global dirty snapshot", () => {
+  const saved = JSON.stringify({ version: 3, incomeMetadata: {} });
+  const incomeEdited = JSON.stringify({
+    version: 3,
+    incomeMetadata: { salaryOne: { employer: "Halmstads kommun" } },
+  });
+  const householdEdited = JSON.stringify({
+    version: 3,
+    householdProfile: { householdDisplayName: "Ola & Therese" },
+    incomeMetadata: {},
+  });
+
+  assert.equal(hasUnsavedWorkspaceChanges(true, saved, incomeEdited), true);
+  assert.equal(hasUnsavedWorkspaceChanges(true, saved, householdEdited), true);
+});
+
 test("save presentation has one shared saved, dirty and saving model", () => {
   assert.deepEqual(getWorkspaceSavePresentation(false, "idle"), {
     label: "Sparat i molnet",
