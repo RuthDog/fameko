@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { InfoTooltip } from "../components/info-tooltip.tsx";
+import { getFinancialHealthMetricPresentation } from "../../shared/planning/financial-health-explainability.ts";
 import type {
   FinancialHealthMetric,
   FinancialHealthObservation,
@@ -14,6 +16,12 @@ const statusStyles: Record<FinancialHealthStatus, string> = {
   STABLE: "bg-emerald-50 text-emerald-800",
   VULNERABLE: "bg-rose-50 text-rose-800",
 };
+
+const metricStatusStyles = {
+  attention: "text-amber-800 before:bg-amber-500",
+  neutral: "text-stone-500 before:bg-stone-400",
+  positive: "text-[#597057] before:bg-[#738770]",
+} as const;
 
 function formatMetric(metric: FinancialHealthMetric) {
   if (metric.value === null) {
@@ -133,19 +141,34 @@ export function FinancialHealthView({
           Nyckeltal bakom bedömningen
         </h2>
         <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {result.metrics.map((metric) => (
-            <div className="rounded-[16px] bg-[#f8f7f3] p-4" key={metric.code}>
-              <dt className="text-xs text-stone-500">{metric.label}</dt>
-              <dd className="mt-1.5 text-lg font-semibold tabular-nums text-stone-900">
-                {formatMetric(metric)}
-              </dd>
-              {metric.caveat ? (
-                <p className="mt-2 text-xs leading-5 text-stone-400">
-                  {metric.caveat}
+          {result.metrics.map((metric) => {
+            const presentation = getFinancialHealthMetricPresentation(
+              metric,
+              result,
+            );
+
+            return (
+              <div className="rounded-[16px] bg-[#f8f7f3] p-4" key={metric.code}>
+                <div className="flex items-start justify-between gap-2">
+                  <dt className="pt-1.5 text-xs text-stone-500">{metric.label}</dt>
+                  <InfoTooltip {...presentation.explanation} />
+                </div>
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-stone-900">
+                  {formatMetric(metric)}
+                </dd>
+                <p
+                  className={`mt-1.5 flex items-center gap-1.5 text-xs font-medium before:size-1.5 before:shrink-0 before:rounded-full before:content-[''] ${metricStatusStyles[presentation.status.tone]}`}
+                >
+                  {presentation.status.label}
                 </p>
-              ) : null}
-            </div>
-          ))}
+                {metric.caveat ? (
+                  <p className="mt-2 text-xs leading-5 text-stone-400">
+                    {metric.caveat}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
         </dl>
       </section>
 

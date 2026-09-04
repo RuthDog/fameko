@@ -22,6 +22,10 @@ const detailSource = await readFile(
   new URL("../../app/app/ekonomisk-halsa/page.tsx", import.meta.url),
   "utf8",
 );
+const tooltipSource = await readFile(
+  new URL("../../app/components/info-tooltip.tsx", import.meta.url),
+  "utf8",
+);
 
 test("Workspace evaluates the currently loaded PlanningYear through the shared engine", () => {
   assert.match(workspaceSource, /evaluateFinancialHealth\(planningData, monthIds\)/);
@@ -54,4 +58,24 @@ test("UI contains no financial-health threshold logic", () => {
   for (const source of [workspaceSource, cardSource, viewSource, savingsSource]) {
     assert.doesNotMatch(source, /negativeMonthsWatchAtLeast|resilientAtLeast|watchAbove/);
   }
+});
+
+test("every Financial Health metric uses the shared explainability presentation", () => {
+  assert.match(viewSource, /getFinancialHealthMetricPresentation/);
+  assert.match(viewSource, /<InfoTooltip \{\.\.\.presentation\.explanation\}/);
+  assert.match(viewSource, /presentation\.status\.label/);
+  assert.doesNotMatch(viewSource, /Relativt hög|Begränsad buffert|Positiv marginal/);
+});
+
+test("InfoTooltip supports desktop hover, mobile tap and accessible focus", () => {
+  assert.match(tooltipSource, /onMouseEnter/);
+  assert.match(tooltipSource, /matchMedia\("\(hover: hover\)"\)/);
+  assert.match(tooltipSource, /onClick=\{\(\) => setOpen\(true\)\}/);
+  assert.match(tooltipSource, /onFocus=\{\(\) => setOpen\(true\)\}/);
+  assert.match(tooltipSource, /aria-expanded=\{open\}/);
+  assert.match(tooltipSource, /role=\{learnMoreHref \? "dialog" : "tooltip"\}/);
+  assert.match(tooltipSource, /event\.key === "Escape"/);
+  assert.match(tooltipSource, /Varför det spelar roll/);
+  assert.match(tooltipSource, /Så använder Fameko det/);
+  assert.match(tooltipSource, /Läs mer/);
 });
