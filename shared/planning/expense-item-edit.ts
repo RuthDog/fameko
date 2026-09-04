@@ -45,7 +45,7 @@ const frequencyIntervals: Record<ExpenseItemFrequency, number | null> = {
   yearly: 12,
 };
 
-function isExpenseItemFrequency(value: string | undefined): value is ExpenseItemFrequency {
+export function isExpenseItemFrequency(value: string | undefined): value is ExpenseItemFrequency {
   return Boolean(value && value in frequencyIntervals);
 }
 

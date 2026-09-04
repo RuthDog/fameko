@@ -29,11 +29,16 @@ import { isHousingData, type HousingData } from "../../shared/planning/housing.t
 import { getMajorHouseholdExpenses } from "../../shared/planning/major-household-expenses.ts";
 import {
   createSavingsGoal,
+  getSavingsGoalEditDraft,
   getSavingsGoals,
   getSavingsOverview,
+  isStandardSavingsGoalId,
   migrateLegacySavingsStructure,
+  removeSavingsGoal,
   renameSavingsGoal,
   selectMonthlySavingsMetrics,
+  updateSavingsGoal,
+  type SavingsGoalEditDraft,
 } from "../../shared/planning/savings.ts";
 import {
   buildMobileUpcomingInsights,
@@ -263,6 +268,11 @@ type PendingEdit = {
 type PendingDelete = {
   target: DeleteTarget;
   recurring: boolean;
+};
+
+type PendingSavingsGoalDelete = {
+  id: string;
+  name: string;
 };
 
 type NameEditor = {
@@ -2308,6 +2318,8 @@ function DesktopSavingsGoalRow({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onDelete,
+  onEdit,
   onSelectMonth,
   onSaveEdit,
 }: {
@@ -2320,6 +2332,8 @@ function DesktopSavingsGoalRow({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onDelete: () => void;
+  onEdit: () => void;
   onSelectMonth: (monthId: string) => void;
   onSaveEdit: () => void;
 }) {
@@ -2330,18 +2344,27 @@ function DesktopSavingsGoalRow({
       <div
         className={`${desktopStickyLabelCell} flex items-center border-b border-l border-stone-100 border-l-stone-200 py-3 pl-10 pr-2 text-sm text-emerald-900`}
       >
-        <EditableName
-          ariaLabel={`Redigera namnet ${goal.name}`}
-          cell
-          editing={nameEditor.editingKey === nameKey(nameTarget)}
-          editKey={nameKey(nameTarget)}
-          label={goal.name}
-          onBeginEdit={() => nameEditor.onBeginEdit(nameTarget, goal.name)}
-          onCancel={nameEditor.onCancelEdit}
-          onChange={nameEditor.onChangeEdit}
-          onSave={nameEditor.onSaveEdit}
-          value={nameEditor.editingValue}
-        />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <EditableName
+              ariaLabel={`Redigera namnet ${goal.name}`}
+              cell
+              editing={nameEditor.editingKey === nameKey(nameTarget)}
+              editKey={nameKey(nameTarget)}
+              label={goal.name}
+              onBeginEdit={() => nameEditor.onBeginEdit(nameTarget, goal.name)}
+              onCancel={nameEditor.onCancelEdit}
+              onChange={nameEditor.onChangeEdit}
+              onSave={nameEditor.onSaveEdit}
+              value={nameEditor.editingValue}
+            />
+          </div>
+          <SavingsGoalActionsMenu
+            goal={goal}
+            onDelete={onDelete}
+            onEdit={onEdit}
+          />
+        </div>
       </div>
       <div
         className="border-b border-stone-100 bg-stone-50/80 px-1 py-3 text-center text-xs font-medium text-emerald-900 lg:text-sm"
@@ -2481,6 +2504,36 @@ function ExpenseItemActionsMenu({
   );
 }
 
+function SavingsGoalActionsMenu({
+  goal,
+  onDelete,
+  onEdit,
+}: {
+  goal: SavingsGoalView;
+  onDelete: () => void;
+  onEdit: () => void;
+}) {
+  const standardGoal = isStandardSavingsGoalId(goal.id);
+
+  return (
+    <AnchoredContextMenu
+      ariaLabel={`Åtgärder för sparmålet ${goal.name}`}
+      items={[
+        { label: "Ändra", onSelect: onEdit },
+        {
+          disabled: standardGoal,
+          disabledReason: standardGoal
+            ? "Standardmål kan inte tas bort"
+            : undefined,
+          label: "Ta bort",
+          onSelect: onDelete,
+          tone: "destructive",
+        },
+      ]}
+    />
+  );
+}
+
 function YearOverview({
   editingKey,
   editingValue,
@@ -2504,6 +2557,8 @@ function YearOverview({
   onCancelEdit,
   onChangeEdit,
   onEditExpense,
+  onEditSavingsGoal,
+  onDeleteSavingsGoal,
   onRequestDelete,
   onOpenSavingsGoal,
   onSelectMonth,
@@ -2539,6 +2594,8 @@ function YearOverview({
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
   onEditExpense: (itemId: string) => void;
+  onEditSavingsGoal: (goalId: string) => void;
+  onDeleteSavingsGoal: (goal: SavingsGoalView) => void;
   onRequestDelete: (target: DeleteTarget) => void;
   onOpenSavingsGoal: () => void;
   onSelectMonth: (monthId: string) => void;
@@ -2883,7 +2940,7 @@ function YearOverview({
           ref={monthHeaderScrollRef}
         >
         <div
-          className="grid w-full min-w-[1384px] grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]"
+          className="grid w-full min-w-[1432px] grid-cols-[256px_96px_repeat(12,minmax(90px,1fr))]"
           data-planning-month-header-grid="true"
         >
           <div
@@ -2953,7 +3010,7 @@ function YearOverview({
         role="region"
         tabIndex={0}
       >
-        <div className="grid w-full min-w-[1384px] grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]">
+        <div className="grid w-full min-w-[1432px] grid-cols-[256px_96px_repeat(12,minmax(90px,1fr))]">
 
         <DesktopSectionHeading first label="Inkomster & fördelningar" />
 
@@ -3187,6 +3244,8 @@ function YearOverview({
                 onBeginEdit={onBeginEdit}
                 onCancelEdit={onCancelEdit}
                 onChangeEdit={onChangeEdit}
+                onDelete={() => onDeleteSavingsGoal(goal)}
+                onEdit={() => onEditSavingsGoal(goal.id)}
                 onSelectMonth={onSelectMonth}
                 onSaveEdit={onSaveEdit}
               />
@@ -3713,6 +3772,8 @@ function MobileSavingsGoalLine({
   onBeginEdit,
   onCancelEdit,
   onChangeEdit,
+  onDelete,
+  onEdit,
   onSaveEdit,
 }: {
   editingKey: string | null;
@@ -3723,6 +3784,8 @@ function MobileSavingsGoalLine({
   onBeginEdit: (target: AmountTarget, amount: string) => void;
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
+  onDelete: () => void;
+  onEdit: () => void;
   onSaveEdit: () => void;
 }) {
   const target: AmountTarget = {
@@ -3735,7 +3798,7 @@ function MobileSavingsGoalLine({
   const amount = getSavingsGoalAmount(month, goal.id);
 
   return (
-    <div className={`flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 ${mobileTypography.item} text-emerald-900`}>
+    <div className={`flex min-h-11 items-center justify-between gap-2 border-b border-stone-100 ${mobileTypography.item} text-emerald-900`}>
       <div className="min-w-0 flex-1">
         <EditableName
           ariaLabel={`Redigera namnet ${goal.name}`}
@@ -3760,6 +3823,7 @@ function MobileSavingsGoalLine({
         onSave={onSaveEdit}
         value={editingValue}
       />
+      <SavingsGoalActionsMenu goal={goal} onDelete={onDelete} onEdit={onEdit} />
     </div>
   );
 }
@@ -4063,10 +4127,12 @@ function ScopeDialog({
 }
 
 function DeleteConfirmDialog({
+  eyebrow = "Planerad kostnad",
   itemName,
   onCancel,
   onConfirm,
 }: {
+  eyebrow?: string;
   itemName: string;
   onCancel: () => void;
   onConfirm: () => void;
@@ -4090,7 +4156,7 @@ function DeleteConfirmDialog({
         }}
         role="dialog"
       >
-        <p className="text-sm text-stone-500">Planerad kostnad</p>
+        <p className="text-sm text-stone-500">{eyebrow}</p>
         <h3 className="mt-1 text-xl font-semibold text-stone-950">Ta bort {itemName}?</h3>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <button
@@ -4177,6 +4243,122 @@ function DeleteScopeDialog({
             Ta bort
           </button>
         </div>
+      </form>
+    </div>
+  );
+}
+
+function SavingsGoalEditDialog({
+  draft,
+  months,
+  onChangeDraft,
+  onClose,
+  onSave,
+}: {
+  draft: SavingsGoalEditDraft;
+  months: ForecastMonth[];
+  onChangeDraft: (draft: SavingsGoalEditDraft) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const canSave =
+    draft.name.trim().length > 0 &&
+    Number.isFinite(draft.amount) &&
+    draft.amount >= 0 &&
+    months.some((month) => month.id === draft.monthId);
+
+  return (
+    <div
+      className="fixed inset-0 z-20 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <form
+        aria-modal="true"
+        className="w-full max-w-md rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSave) onSave();
+        }}
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-stone-500">Sparmål</p>
+            <h3 className="mt-1 text-2xl font-semibold text-stone-950">Ändra sparmål</h3>
+          </div>
+          <button className="text-sm text-stone-400 hover:text-stone-950" onClick={onClose} type="button">
+            Stäng
+          </button>
+        </div>
+
+        <div className="mt-6 overflow-hidden rounded-lg border border-stone-200 bg-white">
+          <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
+            Namn
+            <input
+              autoFocus
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none"
+              maxLength={rowNameMaxLength}
+              onChange={(event) => onChangeDraft({ ...draft, name: event.target.value })}
+              required
+              value={draft.name}
+            />
+          </label>
+          <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
+            Belopp
+            <input
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none"
+              inputMode="numeric"
+              min="0"
+              onChange={(event) => onChangeDraft({ ...draft, amount: parseAmount(event.target.value) })}
+              required
+              step="100"
+              type="number"
+              value={draft.amount}
+            />
+          </label>
+          <label className="grid grid-cols-[96px_minmax(0,1fr)] items-center border-b border-stone-100 px-3 py-3 text-sm text-stone-500">
+            Månad
+            <select
+              className="min-h-9 min-w-0 bg-white text-stone-950 outline-none"
+              onChange={(event) => onChangeDraft({ ...draft, monthId: event.target.value })}
+              value={draft.monthId}
+            >
+              {months.map((month) => (
+                <option key={month.id} value={month.id}>{month.name}</option>
+              ))}
+            </select>
+          </label>
+          <fieldset className="px-3 py-3">
+            <legend className="text-sm text-stone-500">Hur ofta?</legend>
+            <div className="mt-3 grid gap-2">
+              {expenseFrequencyOptions.map((option) => (
+                <label className="flex min-h-8 items-center gap-3 text-sm text-stone-700" key={option.value}>
+                  <input
+                    checked={draft.frequency === option.value}
+                    className="h-4 w-4 accent-stone-950"
+                    name="savings-goal-frequency"
+                    onChange={() => onChangeDraft({ ...draft, frequency: option.value })}
+                    type="radio"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+
+        <button
+          className="mt-6 min-h-11 w-full rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+          disabled={!canSave}
+          type="submit"
+        >
+          Spara ändringar
+        </button>
       </form>
     </div>
   );
@@ -5052,6 +5234,8 @@ function MonthDetail({
   onCancelEdit,
   onChangeEdit,
   onEditExpense,
+  onEditSavingsGoal,
+  onDeleteSavingsGoal,
   onRequestDelete,
   onCancelSavingsGoal,
   onChangeSavingsGoalDraft,
@@ -5082,6 +5266,8 @@ function MonthDetail({
   onCancelEdit: () => void;
   onChangeEdit: (value: string) => void;
   onEditExpense: (itemId: string) => void;
+  onEditSavingsGoal: (goalId: string) => void;
+  onDeleteSavingsGoal: (goal: SavingsGoalView) => void;
   onRequestDelete: (target: DeleteTarget) => void;
   onCancelSavingsGoal: () => void;
   onChangeSavingsGoalDraft: (value: string) => void;
@@ -5262,6 +5448,8 @@ function MonthDetail({
                   onBeginEdit={onBeginEdit}
                   onCancelEdit={onCancelEdit}
                   onChangeEdit={onChangeEdit}
+                  onDelete={() => onDeleteSavingsGoal(goal)}
+                  onEdit={() => onEditSavingsGoal(goal.id)}
                   onSaveEdit={onSaveEdit}
                 />
               ))}
@@ -5305,6 +5493,8 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
     onCancelEdit,
     onChangeEdit,
     onEditExpense,
+    onEditSavingsGoal,
+    onDeleteSavingsGoal,
     onRequestDelete,
     onCancelSavingsGoal,
     onChangeSavingsGoalDraft,
@@ -5495,6 +5685,8 @@ function MobileCurrentMonthPlanning(props: Parameters<typeof MonthDetail>[0]) {
               onBeginEdit={onBeginEdit}
               onCancelEdit={onCancelEdit}
               onChangeEdit={onChangeEdit}
+              onDelete={() => onDeleteSavingsGoal(goal)}
+              onEdit={() => onEditSavingsGoal(goal.id)}
               onSaveEdit={onSaveEdit}
             />
           ))}
@@ -5556,6 +5748,11 @@ export default function Home() {
   const [annualPlanningOpen, setAnnualPlanningOpen] = useState(false);
   const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
   const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
+  const [editingSavingsGoalId, setEditingSavingsGoalId] = useState<string | null>(null);
+  const [savingsGoalEditDraft, setSavingsGoalEditDraft] =
+    useState<SavingsGoalEditDraft | null>(null);
+  const [pendingSavingsGoalDelete, setPendingSavingsGoalDelete] =
+    useState<PendingSavingsGoalDelete | null>(null);
   const [onboardingStarted, setOnboardingStarted] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [guidedSetupOpen, setGuidedSetupOpen] = useState(false);
@@ -6249,6 +6446,43 @@ export default function Home() {
     setSavingsGoalFormOpen(false);
   }
 
+  function openSavingsGoalEditDialog(goalId: string) {
+    const draft = getSavingsGoalEditDraft(planningData, goalId, monthIds);
+
+    if (!draft) return;
+
+    setEditingSavingsGoalId(goalId);
+    setSavingsGoalEditDraft(draft);
+  }
+
+  function closeSavingsGoalEditDialog() {
+    setEditingSavingsGoalId(null);
+    setSavingsGoalEditDraft(null);
+  }
+
+  function saveSavingsGoalEdit() {
+    if (!editingSavingsGoalId || !savingsGoalEditDraft) return;
+
+    setPlanningData((currentData) =>
+      updateSavingsGoal(currentData, editingSavingsGoalId, savingsGoalEditDraft, monthIds),
+    );
+    closeSavingsGoalEditDialog();
+  }
+
+  function requestSavingsGoalDelete(goal: SavingsGoalView) {
+    if (isStandardSavingsGoalId(goal.id)) return;
+    setPendingSavingsGoalDelete(goal);
+  }
+
+  function confirmSavingsGoalDelete() {
+    if (!pendingSavingsGoalDelete) return;
+
+    setPlanningData((currentData) =>
+      removeSavingsGoal(currentData, pendingSavingsGoalDelete.id),
+    );
+    setPendingSavingsGoalDelete(null);
+  }
+
   function resetSeedData() {
     setPlanningData(seedPlanningData);
     savePlanningData(seedPlanningData);
@@ -6268,6 +6502,9 @@ export default function Home() {
     setAnnualPlanningOpen(false);
     setSavingsGoalDraft("");
     setSavingsGoalFormOpen(false);
+    setEditingSavingsGoalId(null);
+    setSavingsGoalEditDraft(null);
+    setPendingSavingsGoalDelete(null);
     setOnboardingStarted(false);
     setOnboardingDismissed(true);
     setGuidedSetupOpen(false);
@@ -6520,6 +6757,8 @@ export default function Home() {
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
           onEditExpense={openEditExpenseDialog}
+          onEditSavingsGoal={openSavingsGoalEditDialog}
+          onDeleteSavingsGoal={requestSavingsGoalDelete}
           onRequestDelete={requestDelete}
           onCancelSavingsGoal={cancelSavingsGoalForm}
           onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -6557,6 +6796,8 @@ export default function Home() {
           onCancelEdit={cancelEdit}
           onChangeEdit={setEditingValue}
           onEditExpense={openEditExpenseDialog}
+          onEditSavingsGoal={openSavingsGoalEditDialog}
+          onDeleteSavingsGoal={requestSavingsGoalDelete}
           onRequestDelete={requestDelete}
           onCancelSavingsGoal={cancelSavingsGoalForm}
           onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -6624,6 +6865,8 @@ export default function Home() {
               onCancelEdit={cancelEdit}
               onChangeEdit={setEditingValue}
               onEditExpense={openEditExpenseDialog}
+              onEditSavingsGoal={openSavingsGoalEditDialog}
+              onDeleteSavingsGoal={requestSavingsGoalDelete}
               onRequestDelete={requestDelete}
               onCancelSavingsGoal={cancelSavingsGoalForm}
               onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -6658,6 +6901,8 @@ export default function Home() {
               onCancelEdit={cancelEdit}
               onChangeEdit={setEditingValue}
               onEditExpense={openEditExpenseDialog}
+              onEditSavingsGoal={openSavingsGoalEditDialog}
+              onDeleteSavingsGoal={requestSavingsGoalDelete}
               onRequestDelete={requestDelete}
               onCancelSavingsGoal={cancelSavingsGoalForm}
               onChangeSavingsGoalDraft={setSavingsGoalDraft}
@@ -6709,6 +6954,25 @@ export default function Home() {
           itemName={pendingDelete.target.itemLabel}
           onCancel={cancelDelete}
           onConfirm={() => confirmDelete("single")}
+        />
+      ) : null}
+
+      {pendingSavingsGoalDelete ? (
+        <DeleteConfirmDialog
+          eyebrow="Sparmål"
+          itemName={pendingSavingsGoalDelete.name}
+          onCancel={() => setPendingSavingsGoalDelete(null)}
+          onConfirm={confirmSavingsGoalDelete}
+        />
+      ) : null}
+
+      {savingsGoalEditDraft ? (
+        <SavingsGoalEditDialog
+          draft={savingsGoalEditDraft}
+          months={months}
+          onChangeDraft={setSavingsGoalEditDraft}
+          onClose={closeSavingsGoalEditDialog}
+          onSave={saveSavingsGoalEdit}
         />
       ) : null}
 

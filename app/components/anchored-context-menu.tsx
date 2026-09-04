@@ -6,6 +6,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { getAnchoredMenuPosition } from "../../shared/ui/anchored-menu-position.ts";
 
 export type AnchoredContextMenuItem = {
+  disabled?: boolean;
+  disabledReason?: string;
   label: string;
   onSelect: () => void;
   tone?: "default" | "destructive";
@@ -72,7 +74,7 @@ export function AnchoredContextMenu({
       setPosition(measuredPosition);
     }
 
-    menu.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -109,7 +111,9 @@ export function AnchoredContextMenu({
 
   function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     const menuItems = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ) ?? [],
     );
     const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
 
@@ -161,17 +165,24 @@ export function AnchoredContextMenu({
             >
               {items.map((item) => (
                 <button
-                  className={`block min-h-10 w-full px-3 text-left transition ${
-                    item.tone === "destructive"
+                  aria-label={
+                    item.disabledReason
+                      ? `${item.label}: ${item.disabledReason}`
+                      : item.label
+                  }
+                  className={`block min-h-10 w-full px-3 text-left transition disabled:cursor-not-allowed disabled:text-stone-300 ${
+                    item.tone === "destructive" && !item.disabled
                       ? "text-rose-700 hover:bg-rose-50"
-                      : "hover:bg-stone-50 hover:text-stone-950"
+                      : "enabled:hover:bg-stone-50 enabled:hover:text-stone-950"
                   }`}
+                  disabled={item.disabled}
                   key={item.label}
                   onClick={() => {
                     closeMenu(false);
                     item.onSelect();
                   }}
                   role="menuitem"
+                  title={item.disabledReason}
                   type="button"
                 >
                   {item.label}

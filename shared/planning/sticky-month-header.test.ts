@@ -87,3 +87,12 @@ test("portal context menus remain above every table layer", () => {
   assert.match(menuSource, /className="fixed z-40/);
   assert.match(workspaceSource, /sticky top-0 z-\[15\]/);
 });
+
+test("desktop planning widens only the shared sticky label column", () => {
+  const grid = "min-w-[1432px] grid-cols-[256px_96px_repeat(12,minmax(90px,1fr))]";
+
+  assert.equal(count(workspaceSource, grid), 2);
+  assert.equal(count(workspaceSource, "grid-cols-[208px_96px_repeat(12,minmax(90px,1fr))]"), 0);
+  assert.match(workspaceSource, /desktopStickyLabelCell\s*=\s*["']sticky left-0 z-10/);
+  assert.match(workspaceSource, /data-planning-header-intersection="true"/);
+});

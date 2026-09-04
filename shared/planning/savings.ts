@@ -1,3 +1,10 @@
+import {
+  buildExpenseItemMonthValues,
+  getExpenseItemEditDraft,
+  isExpenseItemFrequency,
+  type ExpenseItemFrequency,
+} from "./expense-item-edit.ts";
+
 export const savingsMonthIds = [
   "jan",
   "feb",
@@ -45,6 +52,13 @@ export type SavingsOverview = {
   totalPlannedSavings: number;
 };
 
+export type SavingsGoalEditDraft = {
+  amount: number;
+  frequency: ExpenseItemFrequency;
+  monthId: string;
+  name: string;
+};
+
 export type SavingsExpenseItem = {
   category: string;
   frequency?: string;
@@ -52,6 +66,7 @@ export type SavingsExpenseItem = {
   monthlyValues: MonthValues;
   name: string;
   recurring: boolean;
+  [key: string]: unknown;
 };
 
 export type SavingsPlanningData = {
@@ -186,6 +201,108 @@ export function createSavingsGoal<T extends SavingsPlanningData>(
   };
 
   return { ...data, expenseItems: [...data.expenseItems, item] };
+}
+
+export function isStandardSavingsGoalId(goalId: string): boolean {
+  return standardSavingsGoals.some((goal) => goal.id === goalId);
+}
+
+export function getSavingsGoalEditDraft(
+  data: SavingsPlanningData,
+  goalId: string,
+  monthIds: readonly string[],
+): SavingsGoalEditDraft | null {
+  const goal = getSavingsGoals(data).find((item) => item.id === goalId);
+
+  if (!goal) return null;
+
+  const expenseDraft = getExpenseItemEditDraft(
+    {
+      ...goal,
+      frequency: isExpenseItemFrequency(goal.frequency) ? goal.frequency : undefined,
+    },
+    monthIds,
+    data.labels?.expenseItems?.[goal.id],
+  );
+
+  return {
+    amount: expenseDraft.amount,
+    frequency: expenseDraft.frequency,
+    monthId: expenseDraft.monthId,
+    name: savingsItemName(data, goal),
+  };
+}
+
+export function updateSavingsGoal<T extends SavingsPlanningData>(
+  data: T,
+  goalId: string,
+  draft: SavingsGoalEditDraft,
+  monthIds: readonly string[],
+): T {
+  const goal = getSavingsGoals(data).find((item) => item.id === goalId);
+  const name = draft.name.trim().slice(0, 48);
+
+  if (
+    !goal ||
+    !name ||
+    !monthIds.includes(draft.monthId) ||
+    !Number.isFinite(draft.amount) ||
+    draft.amount < 0 ||
+    !isExpenseItemFrequency(draft.frequency)
+  ) {
+    return data;
+  }
+
+  return {
+    ...data,
+    expenseItems: data.expenseItems.map((item) =>
+      item.id === goalId
+        ? {
+            ...item,
+            frequency: draft.frequency,
+            monthlyValues: buildExpenseItemMonthValues(
+              monthIds,
+              draft.amount,
+              draft.monthId,
+              draft.frequency,
+            ),
+            name,
+            recurring: draft.frequency !== "once",
+          }
+        : item,
+    ),
+    labels: {
+      ...data.labels,
+      expenseItems: {
+        ...data.labels?.expenseItems,
+        [goalId]: name,
+      },
+    },
+  };
+}
+
+export function removeSavingsGoal<T extends SavingsPlanningData>(
+  data: T,
+  goalId: string,
+): T {
+  if (
+    isStandardSavingsGoalId(goalId) ||
+    !getSavingsGoals(data).some((item) => item.id === goalId)
+  ) {
+    return data;
+  }
+
+  const expenseItemLabels = { ...data.labels?.expenseItems };
+  delete expenseItemLabels[goalId];
+
+  return {
+    ...data,
+    expenseItems: data.expenseItems.filter((item) => item.id !== goalId),
+    labels: {
+      ...data.labels,
+      expenseItems: expenseItemLabels,
+    },
+  };
 }
 
 export function renameSavingsGoal<T extends SavingsPlanningData>(
