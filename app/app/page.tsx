@@ -32,7 +32,6 @@ import {
   getIncomeMetadataDraft,
   isHouseholdProfile,
   isIncomeMetadataMap,
-  updateHouseholdDisplayName,
   updateIncomeMetadata,
   type HouseholdProfile,
   type IncomeLineKey,
@@ -4715,75 +4714,6 @@ function IncomeMetadataDialog({
   );
 }
 
-function HouseholdProfileDialog({
-  draft,
-  onChangeDraft,
-  onClose,
-  onSave,
-}: {
-  draft: string;
-  onChangeDraft: (draft: string) => void;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-40 grid place-items-end bg-stone-950/10 px-3 py-4 backdrop-blur-[2px] sm:place-items-center"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose();
-        }
-      }}
-    >
-      <form
-        aria-labelledby="household-profile-title"
-        aria-modal="true"
-        className="w-full max-w-md rounded-xl border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.18)]"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSave();
-        }}
-        role="dialog"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-stone-500">Hushåll</p>
-            <h3 className="mt-1 text-2xl font-semibold text-stone-950" id="household-profile-title">
-              Namn på hushållet
-            </h3>
-          </div>
-          <button className="text-sm text-stone-400 hover:text-stone-950" onClick={onClose} type="button">
-            Stäng
-          </button>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-stone-500">
-          Frivilligt. Namnet kan användas i framtida ekonomiska sammanställningar.
-        </p>
-        <label className="mt-5 grid gap-1.5 text-sm text-stone-600">
-          Hushållsnamn
-          <input
-            autoFocus
-            className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 text-stone-950 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-950/5"
-            maxLength={120}
-            onChange={(event) => onChangeDraft(event.target.value)}
-            placeholder="Till exempel Ola & Therese"
-            value={draft}
-          />
-        </label>
-        <div className="mt-6 flex justify-end gap-2">
-          <button className="min-h-10 rounded-lg px-4 text-sm font-medium text-stone-500 hover:bg-stone-100" onClick={onClose} type="button">
-            Avbryt
-          </button>
-          <button className="min-h-10 rounded-lg bg-stone-950 px-5 text-sm font-medium text-white hover:bg-stone-700" type="submit">
-            Spara
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 function ImportPlanningDataDialog({
   busy,
   onImport,
@@ -5409,18 +5339,14 @@ function YearNavigation({
   activeYear,
   availableYears,
   disabled,
-  householdDisplayName,
   onCreate,
-  onEditHousehold,
   onSelect,
   onTransfer,
 }: {
   activeYear: number;
   availableYears: number[];
   disabled: boolean;
-  householdDisplayName: string | null;
   onCreate: () => void;
-  onEditHousehold: () => void;
   onSelect: (year: number) => void;
   onTransfer: () => void;
 }) {
@@ -5449,15 +5375,6 @@ function YearNavigation({
           {year}
         </button>
       ))}
-      <button
-        className={`min-h-9 max-w-full truncate rounded-lg px-3 ${mobileTypography.metadata} font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 disabled:text-stone-300 lg:text-sm`}
-        disabled={disabled}
-        onClick={onEditHousehold}
-        title={householdDisplayName ?? "Lägg till ett frivilligt hushållsnamn"}
-        type="button"
-      >
-        {householdDisplayName ? `Hushåll: ${householdDisplayName}` : "+ Hushållsnamn"}
-      </button>
       <button
         className={`ml-auto min-h-9 rounded-lg border border-stone-200 bg-white px-3 ${mobileTypography.metadata} font-medium text-stone-600 transition hover:border-stone-400 hover:text-stone-950 disabled:cursor-not-allowed disabled:text-stone-300 lg:text-sm`}
         disabled={disabled}
@@ -6038,8 +5955,6 @@ export default function Home() {
     occupation: "",
     incomeComment: "",
   });
-  const [householdProfileDialogOpen, setHouseholdProfileDialogOpen] = useState(false);
-  const [householdDisplayNameDraft, setHouseholdDisplayNameDraft] = useState("");
   const [annualPlanningOpen, setAnnualPlanningOpen] = useState(false);
   const [savingsGoalFormOpen, setSavingsGoalFormOpen] = useState(false);
   const [savingsGoalDraft, setSavingsGoalDraft] = useState("");
@@ -6680,24 +6595,6 @@ export default function Home() {
     closeIncomeMetadataDialog();
   }
 
-  function openHouseholdProfileDialog() {
-    setHouseholdDisplayNameDraft(
-      planningData.householdProfile?.householdDisplayName ?? "",
-    );
-    setHouseholdProfileDialogOpen(true);
-  }
-
-  function closeHouseholdProfileDialog() {
-    setHouseholdProfileDialogOpen(false);
-  }
-
-  function saveHouseholdProfile() {
-    setPlanningData((currentData) =>
-      updateHouseholdDisplayName(currentData, householdDisplayNameDraft),
-    );
-    closeHouseholdProfileDialog();
-  }
-
   function openEditExpenseDialog(itemId: string) {
     const item = planningData.expenseItems.find((expenseItem) => expenseItem.id === itemId);
 
@@ -7063,9 +6960,7 @@ export default function Home() {
         activeYear={activePlanningYear}
         availableYears={availablePlanningYears}
         disabled={cloudLoadState !== "ready" || yearOperationBusy}
-        householdDisplayName={planningData.householdProfile?.householdDisplayName ?? null}
         onCreate={openCreatePlanningYear}
-        onEditHousehold={openHouseholdProfileDialog}
         onSelect={(year) => void switchPlanningYear(year)}
         onTransfer={openTransferPlanningYear}
       />
@@ -7155,6 +7050,7 @@ export default function Home() {
       <PersonalEconomySection
         carData={planningData.carData}
         carPlanning={carPlanning}
+        householdProfile={planningData.householdProfile}
         housingData={planningData.housingData}
         savingsPreview={savingsPreview}
       />
@@ -7337,15 +7233,6 @@ export default function Home() {
           onChangeDraft={setIncomeMetadataDraft}
           onClose={closeIncomeMetadataDialog}
           onSave={saveIncomeMetadata}
-        />
-      ) : null}
-
-      {householdProfileDialogOpen ? (
-        <HouseholdProfileDialog
-          draft={householdDisplayNameDraft}
-          onChangeDraft={setHouseholdDisplayNameDraft}
-          onClose={closeHouseholdProfileDialog}
-          onSave={saveHouseholdProfile}
         />
       ) : null}
 

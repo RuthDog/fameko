@@ -42,6 +42,14 @@ test("BankReportView receives only BankReportModel and contains no economic sele
   assert.match(routeSource, /buildBankReportModel\(planning\.data/);
 });
 
+test("the financial overview presents household address and size from BankReportModel", () => {
+  assert.match(viewSource, /report\.metadata\.address/);
+  assert.match(viewSource, /report\.metadata\.adultCount/);
+  assert.match(viewSource, /report\.metadata\.childCount/);
+  assert.match(viewSource, />Adress</);
+  assert.match(viewSource, />Hushållets storlek</);
+});
+
 test("the financial story follows the approved information hierarchy", () => {
   const orderedSections = [
     '<ExecutiveSummarySection report={report} />',

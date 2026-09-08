@@ -148,8 +148,13 @@ function createReport(): BankReportModel {
       source: { categoryId: "forsakringar", type: "planningData" },
     }],
     metadata: {
+      address: "Storgatan 12",
+      adultCount: 2,
+      childCount: 2,
+      city: "Halmstad",
       householdDisplayName: "Familjen Åström",
       missing: [],
+      postalCode: "302 42",
     },
     savings: {
       assets: {
@@ -220,6 +225,8 @@ test("full report content contains the approved summary and snapshot", () => {
     "POSITIVE_ANNUAL_MARGIN",
     "REGULAR_PLANNED_SAVINGS",
   ]);
+  assert.equal(content.header.address, "Storgatan 12, 302 42 Halmstad");
+  assert.equal(content.header.householdSize, "2 vuxna, 2 barn");
 });
 
 test("missing car data does not invent a car asset or debt", () => {

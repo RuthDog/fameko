@@ -33,8 +33,10 @@ export type BankReportPdfContent = {
     watchItems: string[];
   };
   header: {
+    address: string | null;
     generatedAt: string;
     household: string | null;
+    householdSize: string | null;
     planningYear: number;
     title: string;
   };
@@ -63,6 +65,18 @@ function presentRows(
 export function createBankReportPdfContent(
   report: BankReportModel,
 ): BankReportPdfContent {
+  const locality = [report.metadata.postalCode, report.metadata.city]
+    .filter(Boolean)
+    .join(" ");
+  const address = [report.metadata.address, locality].filter(Boolean).join(", ") || null;
+  const householdSize = [
+    report.metadata.adultCount === null
+      ? null
+      : `${report.metadata.adultCount} ${report.metadata.adultCount === 1 ? "vuxen" : "vuxna"}`,
+    report.metadata.childCount === null
+      ? null
+      : `${report.metadata.childCount} barn`,
+  ].filter(Boolean).join(", ") || null;
   const financialAssets = presentRows([
     report.savings.assets.liquidBuffer === null
       ? null
@@ -261,8 +275,10 @@ export function createBankReportPdfContent(
       watchItems: report.financialHealth.watchItems.slice(0, 3).map((item) => item.message),
     },
     header: {
+      address,
       generatedAt: formatBankReportGeneratedAt(report.document.generatedAt),
       household: report.summary.householdDisplayName,
+      householdSize,
       planningYear: report.document.planningYear,
       title: report.document.title,
     },

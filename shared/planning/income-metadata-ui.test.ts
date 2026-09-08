@@ -30,17 +30,12 @@ test("metadata save uses PlanningData while cancel only closes the draft", () =>
   assert.doesNotMatch(closeHandler, /setPlanningData/);
 });
 
-test("household name is optional and edited in the existing year context", () => {
-  assert.match(workspaceSource, /\+ Hushållsnamn/);
-  assert.match(workspaceSource, /<HouseholdProfileDialog/);
-  assert.match(
-    workspaceSource,
-    /updateHouseholdDisplayName\(currentData, householdDisplayNameDraft\)/,
-  );
+test("household metadata has moved from a dialog to its domain module", () => {
+  assert.doesNotMatch(workspaceSource, /HouseholdProfileDialog/);
+  assert.doesNotMatch(workspaceSource, /householdDisplayNameDraft/);
 });
 
-test("metadata language remains voluntary and secondary", () => {
-  assert.match(workspaceSource, /Frivilligt\. Namnet kan användas/);
+test("income metadata language remains voluntary and secondary", () => {
   assert.match(workspaceSource, /Lägg till om du vill göra framtida ekonomiska sammanställningar mer kompletta\./);
   assert.match(workspaceSource, /Namn och belopp ändras som vanligt direkt i planeringen\./);
 });

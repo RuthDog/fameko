@@ -5,12 +5,18 @@ import {
 } from "../../shared/planning/car.ts";
 import { type HousingData } from "../../shared/planning/housing.ts";
 import {
+  getHouseholdSizeLabel,
+  hasHouseholdProfileData,
+  type HouseholdProfile,
+} from "../../shared/planning/household.ts";
+import {
   calculateSavingsPreview,
 } from "../../shared/planning/personal-economy.ts";
 import {
   getAnnualCarOperatingCost,
   getCarPreviewStatus,
   getSavingsPreviewStatus,
+  type PersonalEconomyStatus,
 } from "../../shared/planning/personal-economy-status.ts";
 import { HousingPreview } from "./housing-overview.tsx";
 import {
@@ -91,14 +97,52 @@ function SavingsPreview({ source }: { source: SavingsPreviewSource }) {
   );
 }
 
+function HouseholdPreview({ data }: { data: HouseholdProfile | undefined }) {
+  const hasData = hasHouseholdProfileData(data);
+  const size = getHouseholdSizeLabel(data);
+  const locality = [data?.postalCode, data?.city].filter(Boolean).join(" ") || null;
+  const metrics = [
+    data?.householdDisplayName
+      ? { label: "Hushållsnamn", value: data.householdDisplayName }
+      : null,
+    size ? { label: "Storlek", value: size } : null,
+    locality ? { label: "Ort", value: locality } : null,
+  ].filter((metric) => metric !== null);
+  const status: PersonalEconomyStatus = hasData
+    ? {
+        label: "Grunduppgifter finns",
+        message: "Hushållets gemensamma metadata följer årsplaneringen.",
+        tone: "stable",
+      }
+    : {
+        label: "Inte ifyllt",
+        message: "Lägg till frivilliga uppgifter när de hjälper din planering.",
+        tone: "unknown",
+      };
+
+  return (
+    <PersonalEconomyCard
+      actionLabel="Visa hushåll"
+      href="/app/hushall"
+      illustrationAlt="Ljust nordiskt matbord som symboliserar hushållets gemensamma grund"
+      illustrationSrc="/images/dashboard/household-preview.webp"
+      metrics={metrics}
+      status={status}
+      title="Hushåll"
+    />
+  );
+}
+
 export function PersonalEconomySection({
   carData,
   carPlanning,
+  householdProfile,
   housingData,
   savingsPreview,
 }: {
   carData: CarData | undefined;
   carPlanning: CarPlanningEconomics;
+  householdProfile: HouseholdProfile | undefined;
   housingData: HousingData | undefined;
   savingsPreview: SavingsPreviewSource;
 }) {
@@ -114,6 +158,10 @@ export function PersonalEconomySection({
     {
       id: "savings",
       preview: <SavingsPreview source={savingsPreview} />,
+    },
+    {
+      id: "household",
+      preview: <HouseholdPreview data={householdProfile} />,
     },
   ];
 
@@ -138,7 +186,7 @@ export function PersonalEconomySection({
       </div>
 
       <div
-        className={`${mobileRhythm.headingToContent} grid grid-cols-1 gap-5 md:grid-cols-2 lg:mt-7 xl:grid-cols-3`}
+        className={`${mobileRhythm.headingToContent} grid grid-cols-1 gap-5 md:grid-cols-2 lg:mt-7 xl:grid-cols-4`}
       >
         {modules.map((module) => (
           <div className="min-w-0" key={module.id}>

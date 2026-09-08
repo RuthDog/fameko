@@ -525,6 +525,21 @@ function DataQualitySection({ report }: { report: BankReportModel }) {
 }
 
 export function BankReportView({ report }: { report: BankReportModel }) {
+  const locality = [report.metadata.postalCode, report.metadata.city]
+    .filter(Boolean)
+    .join(" ");
+  const householdAddress = [report.metadata.address, locality]
+    .filter(Boolean)
+    .join(", ");
+  const householdSize = [
+    report.metadata.adultCount === null
+      ? null
+      : `${report.metadata.adultCount} ${report.metadata.adultCount === 1 ? "vuxen" : "vuxna"}`,
+    report.metadata.childCount === null
+      ? null
+      : `${report.metadata.childCount} barn`,
+  ].filter(Boolean).join(", ");
+
   return (
     <article
       className="mx-auto max-w-[960px] bg-[#fffefa] px-5 py-8 text-stone-950 shadow-[0_24px_90px_rgba(28,25,23,0.08)] sm:px-10 sm:py-12 lg:px-16 lg:py-16"
@@ -543,6 +558,22 @@ export function BankReportView({ report }: { report: BankReportModel }) {
               <dt className="text-xs text-stone-500">Hushåll</dt>
               <dd className="mt-1 font-medium text-stone-900">
                 {report.summary.householdDisplayName}
+              </dd>
+            </div>
+          ) : null}
+          {householdAddress ? (
+            <div>
+              <dt className="text-xs text-stone-500">Adress</dt>
+              <dd className="mt-1 font-medium text-stone-900">
+                {householdAddress}
+              </dd>
+            </div>
+          ) : null}
+          {householdSize ? (
+            <div>
+              <dt className="text-xs text-stone-500">Hushållets storlek</dt>
+              <dd className="mt-1 font-medium text-stone-900">
+                {householdSize}
               </dd>
             </div>
           ) : null}

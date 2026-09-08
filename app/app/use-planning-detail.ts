@@ -8,8 +8,11 @@ import {
   type FinancialAssetsData,
 } from "../../shared/planning/financial-assets.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
+import {
+  isHouseholdProfile,
+  type HouseholdProfile,
+} from "../../shared/planning/household.ts";
 import type {
-  HouseholdProfile,
   IncomeLineKey,
   IncomeMetadata,
 } from "../../shared/planning/income-metadata.ts";
@@ -100,7 +103,8 @@ function isDetailPlanningData(value: unknown): value is DetailPlanningData {
     (data.housingData === undefined || isHousingData(data.housingData)) &&
     (data.carData === undefined || isCarData(data.carData)) &&
     (data.financialAssetsData === undefined ||
-      isFinancialAssetsData(data.financialAssetsData))
+      isFinancialAssetsData(data.financialAssetsData)) &&
+    isHouseholdProfile(data.householdProfile)
   );
 }
 

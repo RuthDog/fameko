@@ -87,7 +87,18 @@ function createPlanningData(): BankReportPlanningData {
       totalMortgage: 2_000_000,
       valuationDate: "2026-08-15",
     },
-    householdProfile: { householdDisplayName: "Familjen Fischer" },
+    householdProfile: {
+      address: "Storgatan 12",
+      adultCount: 2,
+      childCount: 2,
+      children: [
+        { age: 8, birthYear: null, id: "child-1" },
+        { age: null, birthYear: 2021, id: "child-2" },
+      ],
+      city: "Halmstad",
+      householdDisplayName: "Familjen Fischer",
+      postalCode: "302 42",
+    },
     incomeMetadata: {
       salaryOne: {
         employer: "Halmstads kommun",
@@ -118,6 +129,15 @@ test("bank report has the approved professional information hierarchy", () => {
   });
   assert.equal(report.summary.annualIncome, 600_000);
   assert.equal(report.summary.householdDisplayName, "Familjen Fischer");
+  assert.deepEqual(report.metadata, {
+    address: "Storgatan 12",
+    adultCount: 2,
+    childCount: 2,
+    city: "Halmstad",
+    householdDisplayName: "Familjen Fischer",
+    missing: [],
+    postalCode: "302 42",
+  });
   assert.equal(report.income.averageMonthlyAmount, 50_000);
   assert.deepEqual(report.income.items[0], {
     annualAmount: 600_000,
@@ -243,6 +263,11 @@ test("legacy planning data stays valid and missing report metadata is null", () 
   assert.equal(report.car.loanStatus, "unknown");
   assert.equal(report.savings.assets.liquidBuffer, null);
   assert.equal(report.metadata.householdDisplayName, null);
+  assert.equal(report.metadata.address, null);
+  assert.equal(report.metadata.adultCount, null);
+  assert.equal(report.metadata.childCount, null);
+  assert.equal(report.metadata.city, null);
+  assert.equal(report.metadata.postalCode, null);
   assert.deepEqual(report.income.items, []);
   assert.deepEqual(
     report.metadata.missing.map((metadata) => metadata.field),

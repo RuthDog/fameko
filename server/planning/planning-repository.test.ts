@@ -191,7 +191,15 @@ test("optional income and household metadata round-trip in PlanningData without 
     const repository = new PlanningRepository(database);
     const data = {
       ...createPlanningData(),
-      householdProfile: { householdDisplayName: "Ola & Therese" },
+      householdProfile: {
+        address: "Storgatan 12",
+        adultCount: 2,
+        childCount: 1,
+        children: [{ age: 8, birthYear: null, id: "child-1" }],
+        city: "Halmstad",
+        householdDisplayName: "Familjen Solgläntan",
+        postalCode: "302 42",
+      },
       incomeMetadata: {
         salaryOne: {
           employer: "Halmstads kommun",

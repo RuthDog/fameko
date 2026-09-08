@@ -1,8 +1,8 @@
 import { isCarData } from "../../shared/planning/car.ts";
 import { isFinancialAssetsData } from "../../shared/planning/financial-assets.ts";
 import { isHousingData } from "../../shared/planning/housing.ts";
+import { isHouseholdProfile } from "../../shared/planning/household.ts";
 import {
-  isHouseholdProfile,
   isIncomeMetadataMap,
 } from "../../shared/planning/income-metadata.ts";
 

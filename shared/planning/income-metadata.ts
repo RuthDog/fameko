@@ -1,3 +1,15 @@
+import {
+  isHouseholdProfile,
+  updateHouseholdDisplayName,
+  type HouseholdProfile,
+} from "./household.ts";
+
+export {
+  isHouseholdProfile,
+  updateHouseholdDisplayName,
+  type HouseholdProfile,
+};
+
 export const incomeLineKeys = [
   "salaryOne",
   "salaryTwo",
@@ -36,10 +48,6 @@ export type IncomeMetadata = {
   incomeComment?: string | null;
 };
 
-export type HouseholdProfile = {
-  householdDisplayName?: string | null;
-};
-
 export type IncomeMetadataPlanningData = {
   householdProfile?: HouseholdProfile;
   incomeMetadata?: Partial<Record<IncomeLineKey, IncomeMetadata>>;
@@ -53,7 +61,6 @@ export type IncomeMetadataDraft = {
 };
 
 const metadataTextMaxLength = 280;
-const householdNameMaxLength = 120;
 
 function normalizedOptionalText(value: string, maxLength = metadataTextMaxLength) {
   const normalized = value.trim().slice(0, maxLength);
@@ -104,22 +111,6 @@ export function updateIncomeMetadata<T extends IncomeMetadataPlanningData>(
   };
 }
 
-export function updateHouseholdDisplayName<T extends IncomeMetadataPlanningData>(
-  data: T,
-  householdDisplayName: string,
-): T {
-  return {
-    ...data,
-    householdProfile: {
-      ...data.householdProfile,
-      householdDisplayName: normalizedOptionalText(
-        householdDisplayName,
-        householdNameMaxLength,
-      ),
-    },
-  };
-}
-
 function isOptionalNullableString(value: unknown, maxLength: number) {
   return (
     value === undefined ||
@@ -153,14 +144,5 @@ export function isIncomeMetadataMap(value: unknown): boolean {
         isEmploymentType(metadata.employmentType)) &&
       isOptionalNullableString(metadata.occupation, 120) &&
       isOptionalNullableString(metadata.incomeComment, metadataTextMaxLength),
-  );
-}
-
-export function isHouseholdProfile(value: unknown): boolean {
-  return (
-    value === undefined ||
-    (isRecord(value) &&
-      Object.keys(value).every((key) => key === "householdDisplayName") &&
-      isOptionalNullableString(value.householdDisplayName, householdNameMaxLength))
   );
 }

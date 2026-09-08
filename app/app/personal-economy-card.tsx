@@ -82,14 +82,15 @@ export function PersonalEconomyCard({
     >
       <article
         aria-labelledby={titleId}
-        className="flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white shadow-[0_14px_42px_rgba(28,25,23,0.035)] transition group-hover:border-stone-300 group-hover:shadow-[0_18px_48px_rgba(28,25,23,0.06)] lg:h-[440px]"
+        className="flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white shadow-[0_14px_42px_rgba(28,25,23,0.035)] transition group-hover:border-stone-300 group-hover:shadow-[0_18px_48px_rgba(28,25,23,0.06)] lg:h-[480px] xl:h-[520px]"
+        style={{ minHeight: 385 }}
       >
         <div className="relative h-24 shrink-0 overflow-hidden bg-[#f1efe8] lg:h-44">
           <Image
             alt={illustrationAlt}
             className="object-contain p-3 lg:p-4"
             fill
-            sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1279px) calc(50vw - 34px), calc(33vw - 34px)"
+            sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1279px) calc(50vw - 34px), calc(25vw - 32px)"
             src={illustrationSrc}
             unoptimized
           />

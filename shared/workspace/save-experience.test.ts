@@ -27,7 +27,11 @@ test("income and household metadata use the same global dirty snapshot", () => {
   });
   const householdEdited = JSON.stringify({
     version: 3,
-    householdProfile: { householdDisplayName: "Ola & Therese" },
+    householdProfile: {
+      adultCount: 2,
+      childCount: 1,
+      householdDisplayName: "Familjen Solgläntan",
+    },
     incomeMetadata: {},
   });
 

@@ -17,11 +17,11 @@ import type {
   FinancialHealthStatus,
 } from "./financial-health-types.ts";
 import { calculateHousingEconomics, type HousingData } from "./housing.ts";
+import type { HouseholdProfile } from "./household.ts";
 import {
   getEmploymentTypeLabel,
   incomeLineKeys,
   type EmploymentType,
-  type HouseholdProfile,
   type IncomeLineKey,
   type IncomeMetadata,
 } from "./income-metadata.ts";
@@ -153,8 +153,13 @@ export type BankReportModel = {
   };
   majorExpenses: MajorHouseholdExpense[];
   metadata: {
+    address: string | null;
+    adultCount: number | null;
+    childCount: number | null;
+    city: string | null;
     householdDisplayName: string | null;
     missing: BankReportMissingMetadata[];
+    postalCode: string | null;
   };
   savings: {
     assets: {
@@ -344,6 +349,12 @@ function normalizedMetadataText(value: string | null | undefined) {
   return value?.trim() || null;
 }
 
+function normalizedMetadataCount(value: number | null | undefined) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 function getReportIncomes(planningData: BankReportPlanningData): BankReportIncome[] {
   return incomeLineKeys.flatMap((incomeLineKey) => {
     const amounts = incomeLineAmounts(planningData, incomeLineKey);
@@ -443,6 +454,21 @@ export function buildBankReportModel(
   const householdDisplayName = normalizedMetadataText(
     planningData.householdProfile?.householdDisplayName,
   );
+  const householdAddress = normalizedMetadataText(
+    planningData.householdProfile?.address,
+  );
+  const householdPostalCode = normalizedMetadataText(
+    planningData.householdProfile?.postalCode,
+  );
+  const householdCity = normalizedMetadataText(
+    planningData.householdProfile?.city,
+  );
+  const householdAdultCount = normalizedMetadataCount(
+    planningData.householdProfile?.adultCount,
+  );
+  const householdChildCount = normalizedMetadataCount(
+    planningData.householdProfile?.childCount,
+  );
   const financialAssetsTotal = getFinancialAssetsTotal(
     planningData.financialAssetsData,
   );
@@ -536,10 +562,15 @@ export function buildBankReportModel(
     },
     majorExpenses: allMajorExpenses.slice(0, 3),
     metadata: {
+      address: householdAddress,
+      adultCount: householdAdultCount,
+      childCount: householdChildCount,
+      city: householdCity,
       householdDisplayName,
       missing: getMissingMetadata(planningData, reportIncomes).map((metadata) => ({
         ...metadata,
       })),
+      postalCode: householdPostalCode,
     },
     savings: {
       assets: {

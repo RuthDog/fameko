@@ -407,6 +407,12 @@ function drawFirstPage(layout: PdfLayout, content: BankReportPdfContent) {
   if (content.header.household) {
     layout.text(`Hushåll: ${content.header.household}`, { color: palette.muted, size: 9.5 });
   }
+  if (content.header.address) {
+    layout.text(`Adress: ${content.header.address}`, { color: palette.muted, size: 9.5 });
+  }
+  if (content.header.householdSize) {
+    layout.text(`Hushållets storlek: ${content.header.householdSize}`, { color: palette.muted, size: 9.5 });
+  }
   layout.text(`Planeringsår: ${content.header.planningYear}`, { color: palette.muted, size: 9.5 });
   layout.text(`Genererad: ${content.header.generatedAt}`, { color: palette.muted, size: 9.5 });
   layout.gap(6);
