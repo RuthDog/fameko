@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { Miniflare } from "miniflare";
+import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { unstable_splitSqlQuery } from "wrangler";
 
 import type { AccessClaims } from "../auth/access-token.ts";
@@ -30,11 +30,13 @@ const baseClaims: AccessClaims & VerifiedAuthContext = {
 };
 
 async function createDatabase() {
-  const miniflare = new Miniflare({
-    d1Databases: { FAMEKO_DB: "fameko-identity-test" },
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-  });
+  const miniflare = new Miniflare(
+    convertV4MiniflareOptions({
+      d1Databases: { FAMEKO_DB: "fameko-identity-test" },
+      modules: true,
+      script: "export default { fetch() { return new Response('ok'); } }",
+    }),
+  );
   const database = await miniflare.getD1Database("FAMEKO_DB");
   const migration = await readFile(migrationUrl, "utf8");
   const statements = unstable_splitSqlQuery(migration)

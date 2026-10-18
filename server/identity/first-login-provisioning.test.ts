@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { Miniflare } from "miniflare";
+import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { unstable_splitSqlQuery } from "wrangler";
 
 import { currentPlanningYear, emptyPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
@@ -18,11 +18,13 @@ const authContext: VerifiedAuthContext = {
 };
 
 async function createDatabase(name: string) {
-  const miniflare = new Miniflare({
-    d1Databases: { FAMEKO_DB: name },
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-  });
+  const miniflare = new Miniflare(
+    convertV4MiniflareOptions({
+      d1Databases: { FAMEKO_DB: name },
+      modules: true,
+      script: "export default { fetch() { return new Response('ok'); } }",
+    }),
+  );
   const database = await miniflare.getD1Database("FAMEKO_DB");
   const migration = await readFile(migrationUrl, "utf8");
   await database.batch(
