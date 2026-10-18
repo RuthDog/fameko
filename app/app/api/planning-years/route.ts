@@ -4,6 +4,7 @@ import { getFamekoDatabase } from "../../../../server/cloudflare/database.ts";
 import { requirePlanningAuthorization } from "../../../../server/planning/planning-http.ts";
 import { listDevelopmentPlanningYears } from "../../../../server/planning/development-planning-store.ts";
 import { PlanningRepository } from "../../../../server/planning/planning-repository.ts";
+import { createPlanningSessionId } from "../../../../server/planning/planning-session.ts";
 
 export async function GET(request: Request) {
   const authorization = await requirePlanningAuthorization(request);
@@ -20,7 +21,10 @@ export async function GET(request: Request) {
           );
 
     return NextResponse.json(
-      { years },
+      {
+        sessionContextId: await createPlanningSessionId(authorization.context),
+        years,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

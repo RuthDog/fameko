@@ -28,7 +28,10 @@ test("new year supports empty and complete-copy creation through existing Cloud 
   assert.match(workspaceSource, /label: `Kopiera hela \$\{sourceYear\}`/);
   assert.match(workspaceSource, /clonePlanningYearData\(planningData\)/);
   assert.match(workspaceSource, /clonePlanningYearData\(emptyPlanningData\)/);
-  assert.match(workspaceSource, /saveCloudPlanningYear\(data, null, targetYear\)/);
+  assert.match(
+    workspaceSource,
+    /saveCloudPlanningYear\(data, null, targetYear, sessionContextId\)/,
+  );
 });
 
 test("transfer exposes target-wins and overwrite strategies with optimistic saving", () => {
@@ -37,7 +40,7 @@ test("transfer exposes target-wins and overwrite strategies with optimistic savi
   assert.match(workspaceSource, /transferPlanningYearData\(/);
   assert.match(
     workspaceSource,
-    /saveCloudPlanningYear\(transferred, target\.revision, targetYear\)/,
+    /saveCloudPlanningYear\([\s\S]*transferred,[\s\S]*target\.revision,[\s\S]*targetYear,[\s\S]*sessionContextId/,
   );
   assert.match(workspaceSource, /Tidigare år påverkas inte\./);
 });
@@ -45,5 +48,8 @@ test("transfer exposes target-wins and overwrite strategies with optimistic savi
 test("detail pages use the same persisted active PlanningYear as Workspace", () => {
   assert.match(detailSource, /readStoredActivePlanningYear\(/);
   assert.match(detailSource, /loadPlanningYear\(activeYear\)/);
-  assert.match(detailSource, /savePlanningYear\(data, revision, planningYear\)/);
+  assert.match(
+    detailSource,
+    /savePlanningYear\([\s\S]*data,[\s\S]*revision,[\s\S]*planningYear,[\s\S]*sessionContextId/,
+  );
 });

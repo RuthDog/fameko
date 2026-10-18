@@ -70,6 +70,7 @@ type CloudPlanningYear = {
   data: DetailPlanningData;
   revision: number;
   schemaVersion: number;
+  sessionContextId: string;
   updatedAt: string;
   year: number;
 };
@@ -83,10 +84,16 @@ class PlanningDetailApiError extends Error {
   }
 }
 
+function isPlanningSessionChange(error: unknown): error is PlanningDetailApiError {
+  return (
+    error instanceof PlanningDetailApiError &&
+    error.status === 409 &&
+    error.message.toLocaleLowerCase("sv").includes("session")
+  );
+}
+
 export type DetailLoadState = "error" | "loading" | "ready";
 export type DetailSaveState = WorkspaceSaveOperationState;
-
-const storageKey = "fameko.planning-data.v3";
 
 function isDetailPlanningData(value: unknown): value is DetailPlanningData {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -133,6 +140,8 @@ async function parsePlanningYearResponse(
     !Number.isInteger(result.revision) ||
     (result.revision as number) < 1 ||
     result.year !== expectedYear ||
+    typeof result.sessionContextId !== "string" ||
+    !/^[a-f0-9]{64}$/.test(result.sessionContextId) ||
     typeof result.updatedAt !== "string"
   ) {
     throw new Error("Servern skickade ett ogiltigt svar.");
@@ -145,7 +154,10 @@ async function parsePlanningYearResponse(
   };
 }
 
-async function loadPlanningYear(year: number): Promise<CloudPlanningYear> {
+async function loadPlanningYear(
+  year: number,
+  expectedSessionContextId?: string,
+): Promise<CloudPlanningYear> {
   const response = await fetch(`/app/api/planning-years/${year}`, {
     cache: "no-store",
     credentials: "same-origin",
@@ -155,40 +167,49 @@ async function loadPlanningYear(year: number): Promise<CloudPlanningYear> {
     throw new Error("Öppna Workspace först så att ditt planeringsår kan skapas.");
   }
 
-  return parsePlanningYearResponse(response, year);
+  const result = await parsePlanningYearResponse(response, year);
+  if (
+    expectedSessionContextId !== undefined &&
+    result.sessionContextId !== expectedSessionContextId
+  ) {
+    throw new PlanningDetailApiError("Din inloggade session har ändrats.", 409);
+  }
+
+  return result;
 }
 
 async function savePlanningYear(
   data: DetailPlanningData,
   expectedRevision: number,
   year: number,
+  sessionContextId: string,
 ): Promise<CloudPlanningYear> {
   const response = await fetch(`/app/api/planning-years/${year}`, {
     body: JSON.stringify({ data, expectedRevision }),
     cache: "no-store",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Fameko-Planning-Session": sessionContextId,
+    },
     method: "PUT",
   });
   const saved = await parsePlanningYearResponse(response, year);
-  const verified = await loadPlanningYear(year);
+  if (saved.sessionContextId !== sessionContextId) {
+    throw new PlanningDetailApiError("Din inloggade session har ändrats.", 409);
+  }
+
+  const verified = await loadPlanningYear(year, sessionContextId);
 
   if (
     verified.revision !== saved.revision ||
-    JSON.stringify(verified.data) !== JSON.stringify(saved.data)
+    JSON.stringify(verified.data) !== JSON.stringify(saved.data) ||
+    JSON.stringify(verified.data) !== JSON.stringify(data)
   ) {
     throw new Error("Ekonomin ändrades innan sparningen kunde verifieras.");
   }
 
   return verified;
-}
-
-function cachePlanningData(data: DetailPlanningData) {
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(data));
-  } catch {
-    // Cloud Save is authoritative; the optional local cache must never block the page.
-  }
 }
 
 export function usePlanningDetail() {
@@ -199,6 +220,7 @@ export function usePlanningDetail() {
   const [saveState, setSaveState] = useState<DetailSaveState>("idle");
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const [planningYear, setPlanningYear] = useState(currentPlanningYear);
+  const [sessionContextId, setSessionContextId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,10 +239,10 @@ export function usePlanningDetail() {
         setPlanningYear(activeYear);
         setData(loadedPlanningYear.data);
         setRevision(loadedPlanningYear.revision);
+        setSessionContextId(loadedPlanningYear.sessionContextId);
         setSavedSnapshot(JSON.stringify(loadedPlanningYear.data));
         setLoadState("ready");
         setMessage("");
-        cachePlanningData(loadedPlanningYear.data);
       } catch (error) {
         if (cancelled) {
           return;
@@ -237,6 +259,59 @@ export function usePlanningDetail() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!sessionContextId) {
+      return;
+    }
+
+    const expectedSessionContextId = sessionContextId;
+    let checking = false;
+    let cancelled = false;
+
+    async function verifyActiveSession() {
+      if (checking || document.visibilityState === "hidden") {
+        return;
+      }
+
+      checking = true;
+      setLoadState("loading");
+      setMessage("Verifierar din session…");
+
+      try {
+        await loadPlanningYear(planningYear, expectedSessionContextId);
+        if (!cancelled) {
+          setLoadState("ready");
+          setMessage("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadState("error");
+          setMessage(
+            error instanceof PlanningDetailApiError && error.status === 409
+              ? "Den inloggade användaren har ändrats. Ekonomin är dold och kan inte sparas i den här fliken."
+              : "Sessionen kunde inte verifieras. Ekonomin hålls dold.",
+          );
+        }
+      } finally {
+        checking = false;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void verifyActiveSession();
+      }
+    }
+
+    window.addEventListener("focus", verifyActiveSession);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", verifyActiveSession);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [planningYear, sessionContextId]);
+
   const currentSnapshot = useMemo(() => (data ? JSON.stringify(data) : null), [data]);
   const hasChanges = hasUnsavedWorkspaceChanges(
     loadState === "ready",
@@ -251,7 +326,14 @@ export function usePlanningDetail() {
   }, []);
 
   const save = useCallback(async () => {
-    if (!data || revision === null || !hasChanges || saveState === "saving") {
+    if (
+      !data ||
+      revision === null ||
+      !sessionContextId ||
+      loadState !== "ready" ||
+      !hasChanges ||
+      saveState === "saving"
+    ) {
       return;
     }
 
@@ -259,23 +341,36 @@ export function usePlanningDetail() {
     setMessage("Sparar…");
 
     try {
-      const saved = await savePlanningYear(data, revision, planningYear);
+      const saved = await savePlanningYear(
+        data,
+        revision,
+        planningYear,
+        sessionContextId,
+      );
       setData(saved.data);
       setRevision(saved.revision);
       setSavedSnapshot(JSON.stringify(saved.data));
       setSaveState("saved");
       setMessage("Sparat i molnet");
-      cachePlanningData(saved.data);
     } catch (error) {
+      if (isPlanningSessionChange(error)) {
+        setLoadState("error");
+        setSaveState("error");
+        setMessage(
+          "Den inloggade användaren har ändrats. Ekonomin är dold och sparningen stoppades.",
+        );
+        return;
+      }
+
       const conflict = error instanceof PlanningDetailApiError && error.status === 409;
       setSaveState(conflict ? "conflict" : "error");
       setMessage(
         conflict
           ? "Nyare data finns i molnet. Ladda om sidan innan du sparar igen."
-          : "Det gick inte att spara. Dina ändringar finns kvar på den här enheten.",
+          : "Det gick inte att spara. Dina ändringar finns kvar i den öppna fliken.",
       );
     }
-  }, [data, hasChanges, planningYear, revision, saveState]);
+  }, [data, hasChanges, loadState, planningYear, revision, saveState, sessionContextId]);
 
   return {
     data,

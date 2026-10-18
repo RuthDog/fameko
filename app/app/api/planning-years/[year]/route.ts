@@ -11,6 +11,10 @@ import {
 } from "../../../../../server/planning/development-planning-store.ts";
 import { PlanningRepository } from "../../../../../server/planning/planning-repository.ts";
 import {
+  createPlanningSessionId,
+  hasMatchingPlanningSession,
+} from "../../../../../server/planning/planning-session.ts";
+import {
   isPlanningData,
   planningDataVersion,
   planningPayloadMaxBytes,
@@ -24,7 +28,10 @@ function parseYear(value: string): number | null {
   return Number.isInteger(year) && year >= 2000 && year <= 2200 ? year : null;
 }
 
-function planningYearResponse(planningYear: Awaited<ReturnType<PlanningRepository["get"]>>) {
+function planningYearResponse(
+  planningYear: Awaited<ReturnType<PlanningRepository["get"]>>,
+  sessionContextId: string,
+) {
   if (!planningYear) {
     return NextResponse.json({ message: "Planeringsåret finns inte ännu." }, { status: 404 });
   }
@@ -34,6 +41,7 @@ function planningYearResponse(planningYear: Awaited<ReturnType<PlanningRepositor
       data: planningYear.data,
       revision: planningYear.revision,
       schemaVersion: planningYear.dataVersion,
+      sessionContextId,
       updatedAt: planningYear.updatedAt,
       year: planningYear.year,
     },
@@ -63,14 +71,19 @@ export async function GET(request: Request, routeContext: RouteContext) {
   }
 
   try {
+    const sessionContextId = await createPlanningSessionId(authorization.context);
     if (authorization.mode === "development") {
       return planningYearResponse(
         getDevelopmentPlanningYear(authorization.context.household.id, year),
+        sessionContextId,
       );
     }
 
     const repository = new PlanningRepository(await getFamekoDatabase());
-    return planningYearResponse(await repository.get(authorization.context.household.id, year));
+    return planningYearResponse(
+      await repository.get(authorization.context.household.id, year),
+      sessionContextId,
+    );
   } catch {
     return unexpectedErrorResponse();
   }
@@ -84,6 +97,13 @@ export async function PUT(request: Request, routeContext: RouteContext) {
 
   if (!isSameOriginJsonRequest(request, authorization.mode)) {
     return NextResponse.json({ message: "Begäran kunde inte godkännas." }, { status: 403 });
+  }
+
+  if (!(await hasMatchingPlanningSession(request, authorization.context))) {
+    return NextResponse.json(
+      { message: "Din inloggade session har ändrats. Ladda om innan du sparar." },
+      { status: 409 },
+    );
   }
 
   const year = parseYear((await routeContext.params).year);
@@ -160,7 +180,10 @@ export async function PUT(request: Request, routeContext: RouteContext) {
       );
     }
 
-    return planningYearResponse(planningYear);
+    return planningYearResponse(
+      planningYear,
+      await createPlanningSessionId(authorization.context),
+    );
   } catch {
     return unexpectedErrorResponse();
   }
