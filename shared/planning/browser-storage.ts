@@ -7,6 +7,9 @@ export type LegacyPlanningData<T> =
   | { data: T; kind: "valid"; raw: string };
 
 type ReadableStorage = Pick<Storage, "getItem">;
+type RemovableStorage = Pick<Storage, "getItem" | "removeItem">;
+
+let dismissedLegacyPlanningDataRaw: string | null = null;
 
 export function readLegacyPlanningData<T>(
   storage: ReadableStorage,
@@ -24,6 +27,73 @@ export function readLegacyPlanningData<T>(
   } catch {
     return { kind: "invalid", raw };
   }
+}
+
+export function dismissLegacyPlanningDataNotice(raw: string): void {
+  dismissedLegacyPlanningDataRaw = raw;
+}
+
+export function shouldShowLegacyPlanningDataNotice(raw: string): boolean {
+  return dismissedLegacyPlanningDataRaw !== raw;
+}
+
+export type LegacyPlanningDataRemovalResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "changed" | "missing" | "remove-failed" | "storage-unavailable";
+    };
+
+export function removeLegacyPlanningData(
+  storage: RemovableStorage,
+  expectedRaw: string,
+): LegacyPlanningDataRemovalResult {
+  let currentRaw: string | null;
+
+  try {
+    currentRaw = storage.getItem(legacyPlanningDataStorageKey);
+  } catch {
+    return { ok: false, reason: "storage-unavailable" };
+  }
+
+  if (currentRaw === null) {
+    return { ok: false, reason: "missing" };
+  }
+
+  if (currentRaw !== expectedRaw) {
+    return { ok: false, reason: "changed" };
+  }
+
+  try {
+    storage.removeItem(legacyPlanningDataStorageKey);
+  } catch {
+    return { ok: false, reason: "remove-failed" };
+  }
+
+  try {
+    return storage.getItem(legacyPlanningDataStorageKey) === null
+      ? { ok: true }
+      : { ok: false, reason: "remove-failed" };
+  } catch {
+    return { ok: false, reason: "storage-unavailable" };
+  }
+}
+
+export function isVerifiedLegacyDeletionContext(options: {
+  expectedSessionId: string;
+  expectedYear: number;
+  serverYear: { revision: number; sessionContextId: string; year: number } | null;
+  session: { sessionContextId: string; years: number[] };
+}): boolean {
+  return (
+    options.session.sessionContextId === options.expectedSessionId &&
+    options.session.years.includes(options.expectedYear) &&
+    options.serverYear !== null &&
+    options.serverYear.sessionContextId === options.expectedSessionId &&
+    options.serverYear.year === options.expectedYear &&
+    Number.isInteger(options.serverYear.revision) &&
+    options.serverYear.revision >= 1
+  );
 }
 
 export type LegacyImportPolicy =

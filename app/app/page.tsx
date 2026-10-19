@@ -77,9 +77,12 @@ import {
   type YearTransferStrategy,
 } from "../../shared/planning/year-management.ts";
 import {
+  dismissLegacyPlanningDataNotice,
+  isVerifiedLegacyDeletionContext,
   isVerifiedLegacyImport,
-  legacyPlanningDataStorageKey,
   readLegacyPlanningData,
+  removeLegacyPlanningData,
+  shouldShowLegacyPlanningDataNotice,
   type LegacyPlanningData,
 } from "../../shared/planning/browser-storage.ts";
 import { mobileRhythm, mobileTypography } from "./mobile-design-system.ts";
@@ -4737,9 +4740,9 @@ function ImportPlanningDataDialog({
   mode,
   onClose,
   onConfirmOwnership,
-  onDeleteVerifiedCopy,
   onExport,
   onImport,
+  onRequestDelete,
   onSkip,
   ownershipConfirmed,
   planningYear,
@@ -4748,9 +4751,9 @@ function ImportPlanningDataDialog({
   mode: LegacyDialogMode;
   onClose: () => void;
   onConfirmOwnership: (confirmed: boolean) => void;
-  onDeleteVerifiedCopy: () => void;
   onExport: () => void;
   onImport: () => void;
+  onRequestDelete: () => void;
   onSkip: () => void;
   ownershipConfirmed: boolean;
   planningYear: number;
@@ -4811,13 +4814,13 @@ function ImportPlanningDataDialog({
           >
             {mode === "conflict" || mode === "verified" ? "Stäng" : "Skapa tomt år"}
           </button>
-          {mode === "verified" ? (
+          {mode === "conflict" || mode === "verified" ? (
             <button
-              className="min-h-11 rounded-lg bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800"
-              onClick={onDeleteVerifiedCopy}
+              className="min-h-11 rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-800 transition hover:border-red-300 hover:bg-red-100"
+              onClick={onRequestDelete}
               type="button"
             >
-              Radera lokal kopia
+              Ta bort äldre lokal kopia
             </button>
           ) : mode === "create-only" ? (
             <button
@@ -4832,6 +4835,78 @@ function ImportPlanningDataDialog({
           ) : (
             <span aria-hidden="true" />
           )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DeleteLegacyPlanningDataDialog({
+  busy,
+  error,
+  onCancel,
+  onConfirm,
+  onExport,
+}: {
+  busy: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onExport: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-end bg-stone-950/20 px-3 py-4 backdrop-blur-[2px] sm:place-items-center">
+      <section
+        aria-labelledby="delete-legacy-data-title"
+        aria-modal="true"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-lg border border-stone-200 bg-[#fbfaf7] p-5 shadow-[0_24px_80px_rgba(28,25,23,0.22)]"
+        role="alertdialog"
+      >
+        <p className="text-sm text-stone-500">Endast den här webbläsaren</p>
+        <h2 className="mt-1 text-xl font-semibold text-stone-950" id="delete-legacy-data-title">
+          Ta bort äldre lokal kopia?
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-stone-600">
+          Bara den gamla webbläsarkopian tas bort. Uppgifterna och planeringsåren i molnet
+          påverkas aldrig.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-stone-500">
+          Fameko kontrollerar först att aktuell serverdata och rätt session är tillgängliga.
+          Vill du behålla en egen kopia kan du exportera den innan du fortsätter.
+        </p>
+        {error ? (
+          <p
+            className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+        <button
+          className="mt-4 min-h-10 w-full rounded-lg border border-stone-200 bg-white px-4 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:text-stone-950 disabled:cursor-wait disabled:opacity-60"
+          disabled={busy}
+          onClick={onExport}
+          type="button"
+        >
+          Exportera lokal säkerhetskopia
+        </button>
+        <div className="mt-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
+          <button
+            className="min-h-11 rounded-lg border border-stone-200 bg-white px-4 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:text-stone-950 disabled:cursor-wait disabled:opacity-60"
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+          >
+            Avbryt
+          </button>
+          <button
+            className="min-h-11 rounded-lg bg-red-700 px-4 text-sm font-medium text-white transition hover:bg-red-800 disabled:cursor-wait disabled:bg-red-300"
+            disabled={busy}
+            onClick={onConfirm}
+            type="button"
+          >
+            {busy ? "Kontrollerar…" : "Ta bort lokal kopia"}
+          </button>
         </div>
       </section>
     </div>
@@ -5998,6 +6073,9 @@ export default function Home() {
   const [importCandidate, setImportCandidate] = useState<PlanningData | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [legacyDialogMode, setLegacyDialogMode] = useState<LegacyDialogMode | null>(null);
+  const [legacyDeleteConfirmationOpen, setLegacyDeleteConfirmationOpen] = useState(false);
+  const [legacyDeleteBusy, setLegacyDeleteBusy] = useState(false);
+  const [legacyDeleteError, setLegacyDeleteError] = useState<string | null>(null);
   const [legacyOwnershipConfirmed, setLegacyOwnershipConfirmed] = useState(false);
   const [legacyRecord, setLegacyRecord] =
     useState<LegacyPlanningData<PlanningData>>({ kind: "none" });
@@ -6117,7 +6195,10 @@ export default function Home() {
           setSavedSnapshot(JSON.stringify(serverPlanningYear.data));
           setCloudLoadState("ready");
           setCloudMessage("");
-          if (storedData.kind !== "none") {
+          if (
+            storedData.kind !== "none" &&
+            shouldShowLegacyPlanningDataNotice(storedData.raw)
+          ) {
             setLegacyDialogMode("conflict");
           }
           return;
@@ -6173,7 +6254,10 @@ export default function Home() {
               setSavedSnapshot(JSON.stringify(serverPlanningYear.data));
               setCloudLoadState("ready");
               setCloudMessage("");
-              if (storedData.kind !== "none") {
+              if (
+                storedData.kind !== "none" &&
+                shouldShowLegacyPlanningDataNotice(storedData.raw)
+              ) {
                 setLegacyDialogMode("conflict");
               }
               return;
@@ -6420,31 +6504,101 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
-  function deleteVerifiedLegacyCopy() {
-    if (legacyDialogMode !== "verified" || legacyRecord.kind !== "valid") {
-      return;
+  function closeLegacyPlanningDataDialog() {
+    if (legacyRecord.kind !== "none") {
+      dismissLegacyPlanningDataNotice(legacyRecord.raw);
     }
 
+    setLegacyDialogMode(null);
+    setLegacyDeleteConfirmationOpen(false);
+    setLegacyDeleteError(null);
+    setLegacyOwnershipConfirmed(false);
+  }
+
+  function requestLegacyPlanningDataDeletion() {
     if (
-      !window.confirm(
-        "Den verifierade serverkopian finns kvar. Vill du permanent radera den äldre lokala kopian från den här webbläsaren?",
-      )
+      (legacyDialogMode !== "conflict" && legacyDialogMode !== "verified") ||
+      legacyRecord.kind === "none"
     ) {
       return;
     }
 
+    setLegacyDeleteError(null);
+    setLegacyDeleteConfirmationOpen(true);
+  }
+
+  async function deleteLegacyPlanningDataCopy() {
+    if (legacyDeleteBusy || legacyRecord.kind === "none") {
+      return;
+    }
+
+    if (
+      (legacyDialogMode !== "conflict" && legacyDialogMode !== "verified") ||
+      cloudLoadState !== "ready" ||
+      sessionGuardState !== "verified" ||
+      !sessionContextId
+    ) {
+      setLegacyDeleteError(
+        "Servern eller sessionen kan inte verifieras just nu. Ingenting har raderats. Ladda om sidan och försök igen.",
+      );
+      return;
+    }
+
+    const expectedRaw = legacyRecord.raw;
+    const expectedSessionId = sessionContextId;
+    const expectedYear = activePlanningYear;
+    setLegacyDeleteBusy(true);
+    setLegacyDeleteError(null);
+
     try {
-      window.localStorage.removeItem(legacyPlanningDataStorageKey);
-      if (window.localStorage.getItem(legacyPlanningDataStorageKey) !== null) {
-        throw new Error("Legacy storage remained after removal.");
+      const currentSession = await loadCloudPlanningYears();
+      const currentServerYear = await loadCloudPlanningYear(expectedYear, expectedSessionId);
+
+      if (
+        !isVerifiedLegacyDeletionContext({
+          expectedSessionId,
+          expectedYear,
+          serverYear: currentServerYear,
+          session: currentSession,
+        })
+      ) {
+        setLegacyDeleteError(
+          "Aktuell serverdata eller rätt session kunde inte verifieras. Ingenting har raderats.",
+        );
+        return;
       }
+
+      const removal = removeLegacyPlanningData(window.localStorage, expectedRaw);
+      if (!removal.ok) {
+        if (removal.reason === "missing") {
+          setLegacyRecord({ kind: "none" });
+          setLegacyDialogMode(null);
+          setLegacyDeleteConfirmationOpen(false);
+          setLegacyOwnershipConfirmed(false);
+          return;
+        }
+
+        setLegacyDeleteError(
+          removal.reason === "changed"
+            ? "Den lokala kopian har ändrats sedan dialogen öppnades. Ingenting har raderats. Ladda om sidan och granska kopian igen."
+            : "Den lokala kopian kunde inte tas bort i den här webbläsaren. Molndata är oförändrad. Exportera kopian och försök igen senare.",
+        );
+        return;
+      }
+
       setLegacyRecord({ kind: "none" });
       setLegacyDialogMode(null);
+      setLegacyDeleteConfirmationOpen(false);
       setLegacyOwnershipConfirmed(false);
-    } catch {
-      setCloudMessage(
-        "Den lokala kopian kunde inte raderas. Serverkopian påverkas inte; exportera och försök igen senare.",
+    } catch (error) {
+      if (isPlanningSessionChange(error)) {
+        setSessionGuardState("blocked");
+      }
+      setLegacyDeleteError(
+        "Servern eller sessionen kunde inte verifieras. Ingenting har raderats och molndata är oförändrad.",
       );
+    } finally {
+      setLegacyDeleteBusy(false);
     }
   }
 
@@ -7535,15 +7689,26 @@ export default function Home() {
         />
       ) : null}
 
-      {legacyDialogMode && legacyRecord.kind !== "none" ? (
+      {legacyDeleteConfirmationOpen && legacyRecord.kind !== "none" ? (
+        <DeleteLegacyPlanningDataDialog
+          busy={legacyDeleteBusy}
+          error={legacyDeleteError}
+          onCancel={() => {
+            setLegacyDeleteConfirmationOpen(false);
+            setLegacyDeleteError(null);
+          }}
+          onConfirm={() => void deleteLegacyPlanningDataCopy()}
+          onExport={exportLegacyPlanningData}
+        />
+      ) : legacyDialogMode && legacyRecord.kind !== "none" ? (
         <ImportPlanningDataDialog
           busy={importBusy}
           mode={legacyDialogMode}
-          onClose={() => setLegacyDialogMode(null)}
+          onClose={closeLegacyPlanningDataDialog}
           onConfirmOwnership={setLegacyOwnershipConfirmed}
-          onDeleteVerifiedCopy={deleteVerifiedLegacyCopy}
           onExport={exportLegacyPlanningData}
           onImport={() => void resolveLocalImport(true)}
+          onRequestDelete={requestLegacyPlanningDataDeletion}
           onSkip={() => void resolveLocalImport(false)}
           ownershipConfirmed={legacyOwnershipConfirmed}
           planningYear={activePlanningYear}
