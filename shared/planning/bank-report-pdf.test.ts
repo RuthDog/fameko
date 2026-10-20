@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 
 import {
+  bankReportPdfHousingFieldNames,
+  bankReportPdfPrivacyInstruction,
   createBankReportFilename,
+  getBankReportPdfIncomeFieldNames,
   renderBankReportPdf,
 } from "../../server/planning/bank-report-pdf.ts";
 import {
@@ -181,6 +184,21 @@ function createReport(): BankReportModel {
   };
 }
 
+const housingFieldNames = Object.values(bankReportPdfHousingFieldNames);
+const salaryOneFieldNames = Object.values(getBankReportPdfIncomeFieldNames("salaryOne"));
+const salaryTwoFieldNames = Object.values(getBankReportPdfIncomeFieldNames("salaryTwo"));
+const expectedFormFieldNames = [
+  ...housingFieldNames,
+  ...salaryOneFieldNames,
+  ...salaryTwoFieldNames,
+].sort();
+
+function widgetPageIndex(document: PDFDocument, fieldName: string) {
+  const widget = document.getForm().getTextField(fieldName).acroField.getWidgets()[0];
+  const pageReference = widget?.P()?.toString();
+  return document.getPages().findIndex((page) => page.ref.toString() === pageReference);
+}
+
 test("PDF is a valid four-page A4 document", async () => {
   const bytes = await renderBankReportPdf(createReport());
   assert.equal(new TextDecoder("latin1").decode(bytes.slice(0, 8)).startsWith("%PDF-"), true);
@@ -190,6 +208,101 @@ test("PDF is a valid four-page A4 document", async () => {
     assert.ok(Math.abs(page.getWidth() - 595.28) < 0.1);
     assert.ok(Math.abs(page.getHeight() - 841.89) < 0.1);
   }
+});
+
+test("PDF contains empty, writable and printable local-only AcroForm fields", async () => {
+  const document = await PDFDocument.load(await renderBankReportPdf(createReport()));
+  const form = document.getForm();
+
+  assert.deepEqual(
+    form.getFields().map((field) => field.getName()).sort(),
+    expectedFormFieldNames,
+  );
+
+  for (const fieldName of expectedFormFieldNames) {
+    const field = form.getTextField(fieldName);
+    assert.equal(field.getText() ?? "", "");
+    assert.equal(field.isReadOnly(), false);
+
+    const widgets = field.acroField.getWidgets();
+    assert.equal(widgets.length, 1);
+    const widget = widgets[0];
+    assert.ok(widget);
+    assert.equal(widget.hasFlag(4), true, `${fieldName} must have the PDF Print flag`);
+    assert.ok(widget.getAppearances()?.normal, `${fieldName} must have a normal appearance stream`);
+    const rectangle = widget.getRectangle();
+    assert.ok(rectangle.width > 0 && rectangle.height > 0);
+    assert.ok(rectangle.x >= 0 && rectangle.y >= 0);
+    assert.ok(rectangle.x + rectangle.width <= 595.28);
+    assert.ok(rectangle.y + rectangle.height <= 841.89);
+  }
+
+  for (const fieldName of [...salaryOneFieldNames, ...salaryTwoFieldNames]) {
+    assert.equal(widgetPageIndex(document, fieldName), 1);
+  }
+  for (const fieldName of housingFieldNames) {
+    assert.equal(widgetPageIndex(document, fieldName), 2);
+  }
+});
+
+test("only stable employment income lines receive employment document fields", async () => {
+  const report = createReport();
+  report.income.items.push({
+    annualAmount: 24_000,
+    displayName: "Bidrag",
+    incomeLineKey: "benefits",
+    monthlyAmount: 2_000,
+    monthlyAmounts: [],
+  }, {
+    annualAmount: 12_000,
+    displayName: "Övrig inkomst",
+    incomeLineKey: "other",
+    monthlyAmount: 1_000,
+    monthlyAmounts: [],
+  });
+
+  const document = await PDFDocument.load(await renderBankReportPdf(report));
+  const names = document.getForm().getFields().map((field) => field.getName()).sort();
+  assert.deepEqual(names, expectedFormFieldNames);
+  assert.equal(names.some((name) => name.includes("benefits") || name.includes("other")), false);
+});
+
+test("filled local-only fields retain values and appearances after save and reopen", async () => {
+  const document = await PDFDocument.load(await renderBankReportPdf(createReport()));
+  const form = document.getForm();
+  const values = new Map<string, string>([
+    [bankReportPdfHousingFieldNames.address, "Exempelgatan 1"],
+    [bankReportPdfHousingFieldNames.postalCode, "123 45"],
+    [bankReportPdfHousingFieldNames.city, "Exempelstad"],
+    [bankReportPdfHousingFieldNames.propertyDesignation, "Exemplet 1:2"],
+    [getBankReportPdfIncomeFieldNames("salaryOne").employer, "Exempelbolaget AB"],
+    [getBankReportPdfIncomeFieldNames("salaryOne").employmentType, "Tillsvidare"],
+    [getBankReportPdfIncomeFieldNames("salaryOne").jobTitle, "Analytiker"],
+  ]);
+
+  for (const [fieldName, value] of values) {
+    form.getTextField(fieldName).setText(value);
+  }
+  form.updateFieldAppearances(await document.embedFont(StandardFonts.Helvetica));
+
+  const reopened = await PDFDocument.load(await document.save());
+  for (const [fieldName, value] of values) {
+    const field = reopened.getForm().getTextField(fieldName);
+    assert.equal(field.getText(), value);
+    assert.ok(field.acroField.getWidgets()[0]?.getAppearances()?.normal);
+  }
+});
+
+test("privacy instruction and renderer remain local-only with no persistence side effects", () => {
+  assert.equal(
+    bankReportPdfPrivacyInstruction,
+    "Du kan komplettera vissa uppgifter direkt i PDF-filen. Dessa uppgifter sparas inte i Fameko.",
+  );
+  assert.doesNotMatch(
+    rendererSource,
+    /localStorage|sessionStorage|indexedDB|fetch\(|INSERT|UPDATE|DELETE|analytics/i,
+  );
+  assert.doesNotMatch(routeSource, /export\s+(?:async\s+)?function\s+(?:POST|PUT|PATCH|DELETE)\b/);
 });
 
 test("PDF renderer consumes BankReportModel presentation only", () => {

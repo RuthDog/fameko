@@ -3,6 +3,7 @@ import {
   StandardFonts,
   rgb,
   type PDFFont,
+  type PDFForm,
   type PDFPage,
   type RGB,
 } from "pdf-lib";
@@ -21,6 +22,27 @@ const MARGIN = 48;
 const CONTENT_WIDTH = A4_WIDTH - MARGIN * 2;
 const CONTENT_TOP = A4_HEIGHT - MARGIN;
 const CONTENT_BOTTOM = 54;
+
+export const bankReportPdfHousingFieldNames = {
+  address: "fameko.local.housing.address",
+  city: "fameko.local.housing.city",
+  postalCode: "fameko.local.housing.postalCode",
+  propertyDesignation: "fameko.local.housing.propertyDesignation",
+} as const;
+
+export function getBankReportPdfIncomeFieldNames(
+  incomeLineKey: "salaryOne" | "salaryTwo",
+) {
+  const prefix = `fameko.local.income.${incomeLineKey}`;
+  return {
+    employer: `${prefix}.employer`,
+    employmentType: `${prefix}.employmentType`,
+    jobTitle: `${prefix}.jobTitle`,
+  } as const;
+}
+
+export const bankReportPdfPrivacyInstruction =
+  "Du kan komplettera vissa uppgifter direkt i PDF-filen. Dessa uppgifter sparas inte i Fameko.";
 
 const palette = {
   accent: rgb(0.39, 0.46, 0.38),
@@ -43,6 +65,12 @@ type DrawTextOptions = {
   lineHeight?: number;
   maxWidth?: number;
   size?: number;
+};
+
+type LocalDocumentField = {
+  label: string;
+  maxLength: number;
+  name: string;
 };
 
 function safePdfText(value: string) {
@@ -108,12 +136,14 @@ class PdfLayout {
   readonly pages: PDFPage[] = [];
   readonly fonts: FontSet;
   private readonly document: PDFDocument;
+  private readonly form: PDFForm;
   private page: PDFPage;
   private y = CONTENT_TOP;
 
-  constructor(document: PDFDocument, fonts: FontSet) {
+  constructor(document: PDFDocument, fonts: FontSet, form: PDFForm) {
     this.document = document;
     this.fonts = fonts;
+    this.form = form;
     this.page = this.addPage();
   }
 
@@ -343,6 +373,41 @@ class PdfLayout {
     this.y -= rowCount * (cardHeight + 7);
   }
 
+  formFieldRow(fields: LocalDocumentField[]) {
+    const columnGap = 12;
+    const fieldHeight = 15;
+    const rowHeight = 29;
+    const columnWidth = (CONTENT_WIDTH - columnGap * (fields.length - 1)) / fields.length;
+    this.ensureSpace(rowHeight);
+
+    fields.forEach((fieldDefinition, index) => {
+      const x = MARGIN + index * (columnWidth + columnGap);
+      this.page.drawText(safePdfText(fieldDefinition.label), {
+        color: palette.muted,
+        font: this.fonts.regular,
+        size: 7.5,
+        x,
+        y: this.y,
+      });
+
+      const field = this.form.createTextField(fieldDefinition.name);
+      field.setMaxLength(fieldDefinition.maxLength);
+      field.addToPage(this.page, {
+        backgroundColor: rgb(1, 1, 1),
+        borderColor: palette.divider,
+        borderWidth: 0.75,
+        font: this.fonts.regular,
+        height: fieldHeight,
+        textColor: palette.dark,
+        width: columnWidth,
+        x,
+        y: this.y - fieldHeight - 4,
+      });
+    });
+
+    this.y -= rowHeight;
+  }
+
   group(group: BankReportPdfGroup) {
     const noteLines = group.note
       ? wrapText(group.note, CONTENT_WIDTH, this.fonts.regular, 8).length
@@ -417,6 +482,11 @@ function drawFirstPage(layout: PdfLayout, content: BankReportPdfContent) {
     color: palette.muted,
     size: 8.5,
   });
+  layout.gap(2);
+  layout.text(bankReportPdfPrivacyInstruction, {
+    color: palette.accent,
+    size: 8.5,
+  });
 
   layout.sectionTitle("Sammanfattning");
   for (const paragraph of content.summary) {
@@ -451,10 +521,30 @@ function drawIncomePage(layout: PdfLayout, content: BankReportPdfContent) {
     layout.text("Inga inkomster är registrerade för planeringsåret.", { color: palette.muted });
   }
   for (const income of content.incomes) {
-    const estimate = 48;
+    const isEmploymentIncome =
+      income.incomeLineKey === "salaryOne" || income.incomeLineKey === "salaryTwo";
+    const estimate = isEmploymentIncome ? 136 : 48;
     layout.ensureSpace(estimate);
     layout.subheading(income.title);
     layout.row({ label: income.note, value: income.amount });
+    if (income.incomeLineKey === "salaryOne" || income.incomeLineKey === "salaryTwo") {
+      const fieldNames = getBankReportPdfIncomeFieldNames(income.incomeLineKey);
+      layout.gap(5);
+      layout.formFieldRow([{
+        label: "Arbetsgivare (valfritt)",
+        maxLength: 120,
+        name: fieldNames.employer,
+      }]);
+      layout.formFieldRow([{
+        label: "Anställningsform (valfritt)",
+        maxLength: 120,
+        name: fieldNames.employmentType,
+      }, {
+        label: "Befattning (valfritt)",
+        maxLength: 120,
+        name: fieldNames.jobTitle,
+      }]);
+    }
     layout.gap(10);
   }
   layout.sectionTitle("Hushållets kassaflödesbild");
@@ -475,6 +565,26 @@ function drawBalancePage(layout: PdfLayout, content: BankReportPdfContent) {
   } else {
     layout.text("Inga skulddata är registrerade i underlaget.", { color: palette.muted });
   }
+  layout.gap(4);
+  layout.subheading("Dokumentuppgifter för bostad");
+  layout.formFieldRow([{
+    label: "Bostadsadress",
+    maxLength: 160,
+    name: bankReportPdfHousingFieldNames.address,
+  }]);
+  layout.formFieldRow([{
+    label: "Postnummer",
+    maxLength: 12,
+    name: bankReportPdfHousingFieldNames.postalCode,
+  }, {
+    label: "Ort",
+    maxLength: 80,
+    name: bankReportPdfHousingFieldNames.city,
+  }, {
+    label: "Fastighetsbeteckning",
+    maxLength: 120,
+    name: bankReportPdfHousingFieldNames.propertyDesignation,
+  }]);
 }
 
 function drawAppendixPage(layout: PdfLayout, content: BankReportPdfContent) {
@@ -520,11 +630,12 @@ export function createBankReportFilename(report: BankReportModel) {
 export async function renderBankReportPdf(report: BankReportModel) {
   const content = createBankReportPdfContent(report);
   const document = await PDFDocument.create();
+  const form = document.getForm();
   const fonts = {
     bold: await document.embedFont(StandardFonts.HelveticaBold),
     regular: await document.embedFont(StandardFonts.Helvetica),
   };
-  const layout = new PdfLayout(document, fonts);
+  const layout = new PdfLayout(document, fonts, form);
 
   document.setTitle(content.header.title);
   document.setAuthor("Fameko");

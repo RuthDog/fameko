@@ -41,6 +41,7 @@ export type BankReportPdfContent = {
   };
   incomes: Array<{
     amount: string;
+    incomeLineKey: BankReportModel["income"]["items"][number]["incomeLineKey"];
     note: string;
     title: string;
   }>;
@@ -278,6 +279,7 @@ export function createBankReportPdfContent(
       amount: formatBankReportCurrency(
         income.monthlyAmount === null ? income.annualAmount : income.monthlyAmount,
       ),
+      incomeLineKey: income.incomeLineKey,
       note: income.monthlyAmount === null ? "Årsinkomst - varierande inkomst" : "per månad",
       title: income.displayName,
     })),
