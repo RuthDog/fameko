@@ -9,13 +9,9 @@ import {
 } from "../../shared/planning/financial-assets.ts";
 import { isHousingData, type HousingData } from "../../shared/planning/housing.ts";
 import {
-  isHouseholdProfile,
+  isCurrentHouseholdProfile,
   type HouseholdProfile,
 } from "../../shared/planning/household.ts";
-import type {
-  IncomeLineKey,
-  IncomeMetadata,
-} from "../../shared/planning/income-metadata.ts";
 import { currentPlanningYear } from "../../shared/planning/seed-planning-data.ts";
 import { migrateLegacySavingsStructure } from "../../shared/planning/savings.ts";
 import { readStoredActivePlanningYear } from "../../shared/planning/year-management.ts";
@@ -51,7 +47,6 @@ export type DetailPlanningData = {
   financialAssetsData?: FinancialAssetsData;
   housingData?: HousingData;
   householdProfile?: HouseholdProfile;
-  incomeMetadata?: Partial<Record<IncomeLineKey, IncomeMetadata>>;
   incomeLineValues?: Partial<Record<string, Partial<Record<string, number>>>>;
   incomes: DetailIncome[];
   labels?: {
@@ -111,7 +106,8 @@ function isDetailPlanningData(value: unknown): value is DetailPlanningData {
     (data.carData === undefined || isCarData(data.carData)) &&
     (data.financialAssetsData === undefined ||
       isFinancialAssetsData(data.financialAssetsData)) &&
-    isHouseholdProfile(data.householdProfile)
+    isCurrentHouseholdProfile(data.householdProfile) &&
+    !("incomeMetadata" in data)
   );
 }
 

@@ -2,63 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  employmentTypeLabels,
-  getEmploymentTypeLabel,
-  getIncomeMetadataDraft,
   isHouseholdProfile,
   isIncomeMetadataMap,
   updateHouseholdDisplayName,
-  updateIncomeMetadata,
 } from "./income-metadata.ts";
+import { minimizePlanningData, planningDataMinimizationVersion } from "./data-minimization.ts";
 
-test("employment types use stable values and Swedish labels", () => {
-  assert.deepEqual(employmentTypeLabels, {
-    permanent: "Tillsvidare",
-    temporary: "Visstid",
-    hourly: "Timanställning",
-    selfEmployed: "Egenföretagare",
-    parentalLeave: "Föräldraledig",
-    student: "Studerande",
-    other: "Annat",
-  });
-  assert.equal(getEmploymentTypeLabel("permanent"), "Tillsvidare");
-  assert.equal(getEmploymentTypeLabel(null), null);
+test("data minimization compatibility is explicitly versioned", () => {
+  assert.equal(planningDataMinimizationVersion, 1);
 });
 
-test("income metadata is optional and normalized without an amount", () => {
-  const original = {};
-  assert.deepEqual(getIncomeMetadataDraft(original, "salaryOne"), {
-    employer: "",
-    employmentType: "",
-    occupation: "",
-    incomeComment: "",
-  });
-
-  const updated = updateIncomeMetadata(original, "salaryOne", {
-    employer: " Halmstads kommun ",
-    employmentType: "permanent",
-    occupation: " Avdelningschef ",
-    incomeComment: " Bonus kan tillkomma ",
-  });
-
-  assert.deepEqual(updated.incomeMetadata?.salaryOne, {
-    employer: "Halmstads kommun",
-    employmentType: "permanent",
-    occupation: "Avdelningschef",
-    incomeComment: "Bonus kan tillkomma",
-  });
-  assert.equal("amount" in (updated.incomeMetadata?.salaryOne ?? {}), false);
-  assert.deepEqual(original, {});
-});
-
-test("editing a draft and cancelling cannot mutate stored metadata", () => {
-  const data = {
-    incomeMetadata: { salaryOne: { employer: "Region Halland" } },
+test("legacy income metadata is removed without mutating economics or stable ids", () => {
+  const legacy = {
+    incomeMetadata: { salaryOne: { employer: "Legacy employer" } },
+    incomes: [{ id: "income-stable", monthlyValues: { jan: 42_000 } }],
+    openingBalance: 10_000,
+    version: 3,
   };
-  const draft = getIncomeMetadataDraft(data, "salaryOne");
-  draft.employer = "Volvo";
+  const current = minimizePlanningData(legacy);
 
-  assert.equal(data.incomeMetadata.salaryOne.employer, "Region Halland");
+  assert.equal("incomeMetadata" in current, false);
+  assert.deepEqual(current.incomes, legacy.incomes);
+  assert.equal(current.openingBalance, legacy.openingBalance);
+  assert.deepEqual(legacy.incomeMetadata, { salaryOne: { employer: "Legacy employer" } });
 });
 
 test("household display name is optional, trimmed and independently immutable", () => {

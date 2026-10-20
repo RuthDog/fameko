@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isPlanningData } from "../../server/planning/planning-schema.ts";
+import { isPlanningData, readPlanningData } from "../../server/planning/planning-schema.ts";
 import { buildBankReportModel } from "./bank-report.ts";
 import { evaluateFinancialHealth } from "./financial-health.ts";
 import {
-  createHouseholdChild,
   getHouseholdProfile,
   getHouseholdSizeLabel,
+  isCurrentHouseholdProfile,
   isHouseholdProfile,
+  minimizeHouseholdProfile,
   updateHouseholdProfile,
 } from "./household.ts";
 import { seedPlanningDataV3 } from "./seed-planning-data.ts";
@@ -37,32 +38,31 @@ test("a new household starts optional and edits normalize one household profile"
     postalCode: " 302 42 ",
   });
 
-  assert.equal(original.householdProfile, undefined);
-  assert.deepEqual(updated.householdProfile, completeHousehold);
+  assert.equal("householdProfile" in original, false);
+  assert.deepEqual(updated.householdProfile, {
+    adultCount: 2,
+    childCount: 2,
+    householdDisplayName: "Familjen Solgläntan",
+  });
   assert.equal(getHouseholdSizeLabel(updated.householdProfile), "2 vuxna, 2 barn");
 });
 
-test("child details contain only a non-identifying id and either age or birth year", () => {
-  const withChild = createHouseholdChild({ adultCount: 1, childCount: 0 });
-  const updated = updateHouseholdProfile({}, {
-    ...withChild,
-    children: [{ age: 7, birthYear: 2019, id: "child-1" }],
+test("legacy child entries contribute only their count to the minimized profile", () => {
+  assert.deepEqual(minimizeHouseholdProfile({
+    adultCount: 1,
+    children: [{ age: 7, birthYear: null, id: "child-1" }],
+  }), {
+    adultCount: 1,
+    childCount: 1,
+    householdDisplayName: null,
   });
-
-  assert.equal(updated.householdProfile.childCount, 1);
-  assert.deepEqual(updated.householdProfile.children, [
-    { age: 7, birthYear: null, id: "child-1" },
-  ]);
-  assert.deepEqual(
-    Object.keys(updated.householdProfile.children![0]).sort(),
-    ["age", "birthYear", "id"],
-  );
-  assert.equal("name" in updated.householdProfile.children![0], false);
 });
 
 test("runtime validation accepts legacy absence and rejects person-register fields", () => {
   assert.equal(isHouseholdProfile(undefined), true);
   assert.equal(isHouseholdProfile(completeHousehold), true);
+  assert.equal(isCurrentHouseholdProfile(completeHousehold), false);
+  assert.equal(isCurrentHouseholdProfile(minimizeHouseholdProfile(completeHousehold)), true);
   assert.equal(isHouseholdProfile({ ...completeHousehold, phone: "0700000000" }), false);
   assert.equal(isHouseholdProfile({ ...completeHousehold, personalNumber: "no" }), false);
   assert.equal(
@@ -74,7 +74,7 @@ test("runtime validation accepts legacy absence and rejects person-register fiel
   );
 });
 
-test("household metadata survives PlanningData save and reload serialization", () => {
+test("only minimized household metadata survives a new PlanningData save", () => {
   const saved = updateHouseholdProfile(structuredClone(seedPlanningDataV3), completeHousehold);
   assert.equal(isPlanningData(saved), true);
 
@@ -82,8 +82,24 @@ test("household metadata survives PlanningData save and reload serialization", (
   assert.equal(isPlanningData(reloaded), true);
   assert.deepEqual(
     getHouseholdProfile(reloaded as typeof saved),
-    completeHousehold,
+    {
+      adultCount: 2,
+      childCount: 2,
+      householdDisplayName: "Familjen Solgläntan",
+    },
   );
+});
+
+test("legacy PlanningData is readable without retaining retired metadata", () => {
+  const legacy = { ...structuredClone(seedPlanningDataV3), householdProfile: completeHousehold };
+  assert.equal(isPlanningData(legacy), false);
+  const current = readPlanningData(legacy);
+  assert.ok(current);
+  assert.deepEqual(current.householdProfile, {
+    adultCount: 2,
+    childCount: 2,
+    householdDisplayName: "Familjen Solgläntan",
+  });
 });
 
 test("BankReportModel reads shared household metadata automatically", () => {
@@ -94,13 +110,10 @@ test("BankReportModel reads shared household metadata automatically", () => {
   });
 
   assert.deepEqual(report.metadata, {
-    address: "Storgatan 12",
     adultCount: 2,
     childCount: 2,
-    city: "Halmstad",
     householdDisplayName: "Familjen Solgläntan",
     missing: report.metadata.missing,
-    postalCode: "302 42",
   });
   assert.equal(report.summary.householdDisplayName, "Familjen Solgläntan");
 });

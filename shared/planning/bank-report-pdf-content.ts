@@ -33,7 +33,6 @@ export type BankReportPdfContent = {
     watchItems: string[];
   };
   header: {
-    address: string | null;
     generatedAt: string;
     household: string | null;
     householdSize: string | null;
@@ -42,8 +41,6 @@ export type BankReportPdfContent = {
   };
   incomes: Array<{
     amount: string;
-    comment: string | null;
-    metadata: string[];
     note: string;
     title: string;
   }>;
@@ -65,10 +62,6 @@ function presentRows(
 export function createBankReportPdfContent(
   report: BankReportModel,
 ): BankReportPdfContent {
-  const locality = [report.metadata.postalCode, report.metadata.city]
-    .filter(Boolean)
-    .join(" ");
-  const address = [report.metadata.address, locality].filter(Boolean).join(", ") || null;
   const householdSize = [
     report.metadata.adultCount === null
       ? null
@@ -275,7 +268,6 @@ export function createBankReportPdfContent(
       watchItems: report.financialHealth.watchItems.slice(0, 3).map((item) => item.message),
     },
     header: {
-      address,
       generatedAt: formatBankReportGeneratedAt(report.document.generatedAt),
       household: report.summary.householdDisplayName,
       householdSize,
@@ -286,9 +278,6 @@ export function createBankReportPdfContent(
       amount: formatBankReportCurrency(
         income.monthlyAmount === null ? income.annualAmount : income.monthlyAmount,
       ),
-      comment: income.comment,
-      metadata: [income.employer, income.employmentTypeLabel, income.occupation]
-        .filter((value): value is string => Boolean(value)),
       note: income.monthlyAmount === null ? "Årsinkomst - varierande inkomst" : "per månad",
       title: income.displayName,
     })),

@@ -31,16 +31,6 @@ export const employmentTypes = [
 
 export type EmploymentType = (typeof employmentTypes)[number];
 
-export const employmentTypeLabels: Record<EmploymentType, string> = {
-  permanent: "Tillsvidare",
-  temporary: "Visstid",
-  hourly: "Timanställning",
-  selfEmployed: "Egenföretagare",
-  parentalLeave: "Föräldraledig",
-  student: "Studerande",
-  other: "Annat",
-};
-
 export type IncomeMetadata = {
   employer?: string | null;
   employmentType?: EmploymentType | null;
@@ -48,67 +38,13 @@ export type IncomeMetadata = {
   incomeComment?: string | null;
 };
 
-export type IncomeMetadataPlanningData = {
-  householdProfile?: HouseholdProfile;
-  incomeMetadata?: Partial<Record<IncomeLineKey, IncomeMetadata>>;
-};
-
-export type IncomeMetadataDraft = {
-  employer: string;
-  employmentType: EmploymentType | "";
-  occupation: string;
-  incomeComment: string;
-};
-
 const metadataTextMaxLength = 280;
-
-function normalizedOptionalText(value: string, maxLength = metadataTextMaxLength) {
-  const normalized = value.trim().slice(0, maxLength);
-  return normalized || null;
-}
 
 export function isEmploymentType(value: unknown): value is EmploymentType {
   return (
     typeof value === "string" &&
     employmentTypes.includes(value as EmploymentType)
   );
-}
-
-export function getEmploymentTypeLabel(value: EmploymentType | null | undefined) {
-  return value ? employmentTypeLabels[value] : null;
-}
-
-export function getIncomeMetadataDraft(
-  data: IncomeMetadataPlanningData,
-  incomeLineKey: IncomeLineKey,
-): IncomeMetadataDraft {
-  const metadata = data.incomeMetadata?.[incomeLineKey];
-
-  return {
-    employer: metadata?.employer ?? "",
-    employmentType: metadata?.employmentType ?? "",
-    occupation: metadata?.occupation ?? "",
-    incomeComment: metadata?.incomeComment ?? "",
-  };
-}
-
-export function updateIncomeMetadata<T extends IncomeMetadataPlanningData>(
-  data: T,
-  incomeLineKey: IncomeLineKey,
-  draft: IncomeMetadataDraft,
-): T {
-  return {
-    ...data,
-    incomeMetadata: {
-      ...data.incomeMetadata,
-      [incomeLineKey]: {
-        employer: normalizedOptionalText(draft.employer, 120),
-        employmentType: draft.employmentType || null,
-        occupation: normalizedOptionalText(draft.occupation, 120),
-        incomeComment: normalizedOptionalText(draft.incomeComment),
-      },
-    },
-  };
 }
 
 function isOptionalNullableString(value: unknown, maxLength: number) {

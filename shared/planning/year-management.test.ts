@@ -65,17 +65,27 @@ test("copies the complete year including HousingData, CarData and brand labels",
     },
   };
   const copy = clonePlanningYearData(source);
+  const { incomeMetadata: _retiredIncomeMetadata, ...sourceWithoutIncomeMetadata } = source;
 
-  assert.deepEqual(copy, source);
+  assert.deepEqual(copy, {
+    ...sourceWithoutIncomeMetadata,
+    householdProfile: {
+      adultCount: 2,
+      childCount: 1,
+      householdDisplayName: "Familjen Fischer",
+    },
+  });
+  assert.equal("incomeMetadata" in copy, false);
   assert.notEqual(copy, source);
   assert.notEqual(copy.housingData, source.housingData);
   assert.notEqual(copy.carData, source.carData);
   assert.notEqual(copy.financialAssetsData, source.financialAssetsData);
-  assert.notEqual(copy.incomeMetadata, source.incomeMetadata);
   assert.notEqual(copy.householdProfile, source.householdProfile);
-  assert.notEqual(copy.householdProfile.children, source.householdProfile.children);
-  assert.deepEqual(copy.incomeMetadata, source.incomeMetadata);
-  assert.deepEqual(copy.householdProfile, source.householdProfile);
+  assert.deepEqual(copy.householdProfile, {
+    adultCount: 2,
+    childCount: 1,
+    householdDisplayName: "Familjen Fischer",
+  });
   assert.equal(copy.labels.expenseItems["streaming-spotify"], "Spotify Premium Family");
 });
 
@@ -137,7 +147,7 @@ test("overwrite replaces corresponding data and never mutates either year", () =
   assert.deepEqual(target, targetBefore);
 });
 
-test("missing transfer carries optional income and household metadata with the year", () => {
+test("year transfer never reintroduces retired income or household metadata", () => {
   const source = {
     householdProfile: {
       address: "Storgatan 12",
@@ -155,7 +165,14 @@ test("missing transfer carries optional income and household metadata with the y
   };
   const target = { version: 3 };
 
-  assert.deepEqual(transferPlanningYearData(source, target, "missing"), source);
+  assert.deepEqual(transferPlanningYearData(source, target, "missing"), {
+    householdProfile: {
+      adultCount: 2,
+      childCount: 1,
+      householdDisplayName: "Familjen Fischer",
+    },
+    version: 3,
+  });
 });
 
 test("year lists contain only real unique supported years", () => {

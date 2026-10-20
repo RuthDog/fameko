@@ -42,7 +42,7 @@ function createReport(): BankReportModel {
       carValue: 280_000,
       currentLoanBalance: 120_000,
       hasData: true,
-      loanStatus: "loan",
+      loanStatus: "withLoan",
       monthlyAmortization: 2_000,
       monthlyInsurance: 600,
       monthlyInterestCost: 420,
@@ -105,26 +105,16 @@ function createReport(): BankReportModel {
       averageMonthlyAmount: 75_000,
       items: [{
         annualAmount: 540_000,
-        comment: "Fast lön före skatt.",
         displayName: "Lön 1",
-        employer: "Fameko AB",
-        employmentType: "permanent",
-        employmentTypeLabel: "Tillsvidareanställning",
         incomeLineKey: "salaryOne",
         monthlyAmount: 45_000,
         monthlyAmounts: [],
-        occupation: "Produktdesigner",
       }, {
         annualAmount: 360_000,
-        comment: null,
         displayName: "Lön 2",
-        employer: "Nordic AB",
-        employmentType: "selfEmployed",
-        employmentTypeLabel: "Egenföretagare",
         incomeLineKey: "salaryTwo",
         monthlyAmount: null,
         monthlyAmounts: [],
-        occupation: "Konsult",
       }],
       monthlyAmounts: [],
     },
@@ -148,13 +138,10 @@ function createReport(): BankReportModel {
       source: { categoryId: "forsakringar", type: "planningData" },
     }],
     metadata: {
-      address: "Storgatan 12",
       adultCount: 2,
       childCount: 2,
-      city: "Halmstad",
       householdDisplayName: "Familjen Åström",
       missing: [],
-      postalCode: "302 42",
     },
     savings: {
       assets: {
@@ -225,7 +212,7 @@ test("full report content contains the approved summary and snapshot", () => {
     "POSITIVE_ANNUAL_MARGIN",
     "REGULAR_PLANNED_SAVINGS",
   ]);
-  assert.equal(content.header.address, "Storgatan 12, 302 42 Halmstad");
+  assert.equal("address" in content.header, false);
   assert.equal(content.header.householdSize, "2 vuxna, 2 barn");
 });
 
@@ -237,17 +224,12 @@ test("missing car data does not invent a car asset or debt", () => {
   assert.equal(content.debts.some((group) => group.title === "Billån"), false);
 });
 
-test("missing metadata is presented as a data-quality checklist", () => {
+test("retired document metadata is not presented as a data-quality gap", () => {
   const report = createReport();
-  report.metadata.missing = [{
-    field: "incomeEmployer",
-    label: "Arbetsgivare",
-    section: "income",
-    status: "notCollected",
-  }];
-  assert.ok(createBankReportPdfContent(report).dataQuality.some(
-    (item) => !item.complete && item.label === "Arbetsgivare saknas",
-  ));
+  assert.equal(
+    createBankReportPdfContent(report).dataQuality.some((item) => /Arbetsgivare|Befattning/.test(item.label)),
+    false,
+  );
 });
 
 test("variable income uses the safe annual amount", () => {

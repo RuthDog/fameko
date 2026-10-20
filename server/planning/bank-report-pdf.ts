@@ -407,9 +407,6 @@ function drawFirstPage(layout: PdfLayout, content: BankReportPdfContent) {
   if (content.header.household) {
     layout.text(`Hushåll: ${content.header.household}`, { color: palette.muted, size: 9.5 });
   }
-  if (content.header.address) {
-    layout.text(`Adress: ${content.header.address}`, { color: palette.muted, size: 9.5 });
-  }
   if (content.header.householdSize) {
     layout.text(`Hushållets storlek: ${content.header.householdSize}`, { color: palette.muted, size: 9.5 });
   }
@@ -454,13 +451,9 @@ function drawIncomePage(layout: PdfLayout, content: BankReportPdfContent) {
     layout.text("Inga inkomster är registrerade för planeringsåret.", { color: palette.muted });
   }
   for (const income of content.incomes) {
-    const estimate = 48 + income.metadata.length * 13 + (income.comment ? 28 : 0);
+    const estimate = 48;
     layout.ensureSpace(estimate);
     layout.subheading(income.title);
-    income.metadata.forEach((value) => layout.text(value, { color: palette.muted, size: 9 }));
-    if (income.comment) {
-      layout.text(income.comment, { color: palette.muted, lineHeight: 12, size: 8.5 });
-    }
     layout.row({ label: income.note, value: income.amount });
     layout.gap(10);
   }

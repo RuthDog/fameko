@@ -1,3 +1,5 @@
+import { minimizePlanningData } from "./data-minimization.ts";
+
 export type YearTransferStrategy = "missing" | "overwrite";
 
 type PlanningYearStorage = {
@@ -20,7 +22,10 @@ function isIdentifiedArray(value: unknown[]): value is IdentifiedValue[] {
 }
 
 export function clonePlanningYearData<T>(data: T): T {
-  return JSON.parse(JSON.stringify(data)) as T;
+  const clone = JSON.parse(JSON.stringify(data)) as T;
+  return isRecord(clone) && clone.version === 3
+    ? minimizePlanningData(clone) as T
+    : clone;
 }
 
 function mergeMissingValue(source: unknown, target: unknown): unknown {
@@ -62,7 +67,7 @@ export function transferPlanningYearData<T>(
     return clonePlanningYearData(source);
   }
 
-  return mergeMissingValue(source, target) as T;
+  return clonePlanningYearData(mergeMissingValue(source, target) as T);
 }
 
 export function normalizePlanningYears(years: readonly number[]): number[] {

@@ -1,4 +1,4 @@
-import { isPlanningData, type PlanningDataJson } from "./planning-schema.ts";
+import { readPlanningData, type PlanningDataJson } from "./planning-schema.ts";
 
 type PlanningYearRow = {
   data_version: number;
@@ -19,8 +19,8 @@ export type PlanningYear = {
 };
 
 function mapPlanningYear(row: PlanningYearRow): PlanningYear {
-  const data: unknown = JSON.parse(row.planning_data);
-  if (!isPlanningData(data) || data.version !== row.data_version) {
+  const data = readPlanningData(JSON.parse(row.planning_data));
+  if (!data || data.version !== row.data_version) {
     throw new Error("Stored PlanningData is invalid.");
   }
 

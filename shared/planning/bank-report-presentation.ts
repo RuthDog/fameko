@@ -126,18 +126,6 @@ export function getExecutiveSummaryParagraphs(
   return paragraphs;
 }
 
-function missingMetadataMessage(
-  field: BankReportModel["metadata"]["missing"][number]["field"],
-) {
-  return {
-    householdDisplayName: "Hushållsnamn saknas",
-    incomeComment: null,
-    incomeEmployer: "Arbetsgivare saknas",
-    incomeEmploymentType: "Anställningsform saknas",
-    incomeOccupation: "Befattning saknas",
-  }[field];
-}
-
 export function getBankReportDataQualityItems(
   report: BankReportModel,
 ): BankReportDataQualityItem[] {
@@ -164,13 +152,6 @@ export function getBankReportDataQualityItems(
 
   if (report.car.hasData) {
     items.push({ complete: true, label: "Bil" });
-  }
-
-  for (const metadata of report.metadata.missing) {
-    const message = missingMetadataMessage(metadata.field);
-    if (message) {
-      items.push({ complete: false, label: message });
-    }
   }
 
   return items;

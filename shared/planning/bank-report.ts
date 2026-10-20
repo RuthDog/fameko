@@ -19,11 +19,8 @@ import type {
 import { calculateHousingEconomics, type HousingData } from "./housing.ts";
 import type { HouseholdProfile } from "./household.ts";
 import {
-  getEmploymentTypeLabel,
   incomeLineKeys,
-  type EmploymentType,
   type IncomeLineKey,
-  type IncomeMetadata,
 } from "./income-metadata.ts";
 import {
   getMajorHouseholdExpenses,
@@ -48,19 +45,13 @@ export type BankReportPlanningData = FinancialHealthPlanningData & {
   financialAssetsData?: FinancialAssetsData;
   housingData?: HousingData;
   householdProfile?: HouseholdProfile;
-  incomeMetadata?: Partial<Record<IncomeLineKey, IncomeMetadata>>;
   labels?: FinancialHealthPlanningData["labels"] & {
     incomeLines?: Record<string, string>;
   };
 };
 
 export type BankReportMissingMetadata = {
-  field:
-    | "householdDisplayName"
-    | "incomeComment"
-    | "incomeEmployer"
-    | "incomeEmploymentType"
-    | "incomeOccupation";
+  field: "householdDisplayName";
   label: string;
   section: "income" | "summary";
   status: "notCollected";
@@ -68,18 +59,13 @@ export type BankReportMissingMetadata = {
 
 export type BankReportIncome = {
   annualAmount: number;
-  comment: string | null;
   displayName: string;
-  employer: string | null;
-  employmentType: EmploymentType | null;
-  employmentTypeLabel: string | null;
   incomeLineKey: IncomeLineKey;
   monthlyAmount: number | null;
   monthlyAmounts: Array<{
     amount: number;
     monthId: string;
   }>;
-  occupation: string | null;
 };
 
 export type BankReportPlanningItem = {
@@ -153,13 +139,10 @@ export type BankReportModel = {
   };
   majorExpenses: MajorHouseholdExpense[];
   metadata: {
-    address: string | null;
     adultCount: number | null;
     childCount: number | null;
-    city: string | null;
     householdDisplayName: string | null;
     missing: BankReportMissingMetadata[];
-    postalCode: string | null;
   };
   savings: {
     assets: {
@@ -201,39 +184,6 @@ export type BuildBankReportOptions = {
   generatedAt: Date | string;
   planningYear: number;
 };
-
-const missingMetadata: BankReportMissingMetadata[] = [
-  {
-    field: "householdDisplayName",
-    label: "Hushåll",
-    section: "summary",
-    status: "notCollected",
-  },
-  {
-    field: "incomeEmployer",
-    label: "Arbetsgivare",
-    section: "income",
-    status: "notCollected",
-  },
-  {
-    field: "incomeEmploymentType",
-    label: "Anställningsform",
-    section: "income",
-    status: "notCollected",
-  },
-  {
-    field: "incomeOccupation",
-    label: "Yrke",
-    section: "income",
-    status: "notCollected",
-  },
-  {
-    field: "incomeComment",
-    label: "Kommentar",
-    section: "income",
-    status: "notCollected",
-  },
-];
 
 function normalizeGeneratedAt(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
@@ -358,61 +308,27 @@ function normalizedMetadataCount(value: number | null | undefined) {
 function getReportIncomes(planningData: BankReportPlanningData): BankReportIncome[] {
   return incomeLineKeys.flatMap((incomeLineKey) => {
     const amounts = incomeLineAmounts(planningData, incomeLineKey);
-    const metadata = planningData.incomeMetadata?.[incomeLineKey];
-    const hasMetadata = Boolean(
-      metadata && Object.values(metadata).some((value) => value !== null && value !== ""),
-    );
     const hasPlannedAmount = amounts.some((amount) => amount !== 0);
 
-    if (!hasPlannedAmount && !hasMetadata) {
+    if (!hasPlannedAmount) {
       return [];
     }
 
     const firstAmount = amounts[0] ?? 0;
     const hasStableMonthlyAmount = amounts.every((amount) => amount === firstAmount);
-    const employmentType = metadata?.employmentType ?? null;
 
     return [{
       annualAmount: amounts.reduce((total, amount) => total + amount, 0),
-      comment: normalizedMetadataText(metadata?.incomeComment),
       displayName:
         planningData.labels?.incomeLines?.[incomeLineKey] ??
         defaultIncomeLineLabels[incomeLineKey],
-      employer: normalizedMetadataText(metadata?.employer),
-      employmentType,
-      employmentTypeLabel: getEmploymentTypeLabel(employmentType),
       incomeLineKey,
       monthlyAmount: hasStableMonthlyAmount ? firstAmount : null,
       monthlyAmounts: savingsMonthIds.map((monthId, index) => ({
         amount: amounts[index] ?? 0,
         monthId,
       })),
-      occupation: normalizedMetadataText(metadata?.occupation),
     }];
-  });
-}
-
-function getMissingMetadata(
-  planningData: BankReportPlanningData,
-  incomes: readonly BankReportIncome[],
-) {
-  const householdDisplayName = normalizedMetadataText(
-    planningData.householdProfile?.householdDisplayName,
-  );
-
-  return missingMetadata.filter(({ field }) => {
-    if (field === "householdDisplayName") {
-      return householdDisplayName === null;
-    }
-
-    const incomeField = {
-      incomeComment: "comment",
-      incomeEmployer: "employer",
-      incomeEmploymentType: "employmentType",
-      incomeOccupation: "occupation",
-    }[field] as "comment" | "employer" | "employmentType" | "occupation";
-
-    return incomes.length === 0 || incomes.some((income) => income[incomeField] === null);
   });
 }
 
@@ -453,15 +369,6 @@ export function buildBankReportModel(
   const reportIncomes = getReportIncomes(planningData);
   const householdDisplayName = normalizedMetadataText(
     planningData.householdProfile?.householdDisplayName,
-  );
-  const householdAddress = normalizedMetadataText(
-    planningData.householdProfile?.address,
-  );
-  const householdPostalCode = normalizedMetadataText(
-    planningData.householdProfile?.postalCode,
-  );
-  const householdCity = normalizedMetadataText(
-    planningData.householdProfile?.city,
   );
   const householdAdultCount = normalizedMetadataCount(
     planningData.householdProfile?.adultCount,
@@ -562,15 +469,10 @@ export function buildBankReportModel(
     },
     majorExpenses: allMajorExpenses.slice(0, 3),
     metadata: {
-      address: householdAddress,
       adultCount: householdAdultCount,
       childCount: householdChildCount,
-      city: householdCity,
       householdDisplayName,
-      missing: getMissingMetadata(planningData, reportIncomes).map((metadata) => ({
-        ...metadata,
-      })),
-      postalCode: householdPostalCode,
+      missing: [],
     },
     savings: {
       assets: {

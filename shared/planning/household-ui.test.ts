@@ -29,21 +29,15 @@ test("Hushåll is a fourth detail module using the shared save experience", () =
 });
 
 test("the detail page collects household identity and size without person profiles", () => {
-  for (const label of [
-    "Hushållsnamn",
-    "Adress",
-    "Postnummer",
-    "Ort",
-    "Antal vuxna",
-    "Antal barn",
-    "Ålder",
-    "Födelseår",
-  ]) {
+  for (const label of ["Hushållsnamn", "Antal vuxna", "Antal barn"]) {
     assert.match(overviewSource, new RegExp(label));
   }
 
-  assert.doesNotMatch(overviewSource, /Telefonnummer|E-post|Personnummer|Civilstånd|Födelsedatum/);
-  assert.match(overviewSource, /Inga namn eller andra identifierande uppgifter sparas/);
+  assert.doesNotMatch(
+    overviewSource,
+    /Adress|Postnummer|Ort|Ålder|Födelseår|Telefonnummer|E-post|Personnummer|Civilstånd|Födelsedatum/,
+  );
+  assert.match(overviewSource, /kontaktuppgifter eller adresser behövs/);
 });
 
 test("household editing no longer behaves like a year-navigation setting", () => {

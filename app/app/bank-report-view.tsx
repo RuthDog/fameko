@@ -238,18 +238,6 @@ function IncomeAndCashFlowSection({ report }: { report: BankReportModel }) {
                 <h3 className="text-lg font-semibold tracking-[-0.02em] text-stone-950">
                   {income.displayName}
                 </h3>
-                {[income.employer, income.employmentTypeLabel, income.occupation]
-                  .filter((value): value is string => Boolean(value))
-                  .map((value) => (
-                    <p className="mt-1 text-sm leading-6 text-stone-600" key={value}>
-                      {value}
-                    </p>
-                  ))}
-                {income.comment ? (
-                  <p className="mt-3 max-w-xl text-sm italic leading-6 text-stone-500">
-                    {income.comment}
-                  </p>
-                ) : null}
               </div>
               <div className="mt-4 sm:mt-0 sm:text-right">
                 {income.monthlyAmount === null ? (
@@ -525,12 +513,6 @@ function DataQualitySection({ report }: { report: BankReportModel }) {
 }
 
 export function BankReportView({ report }: { report: BankReportModel }) {
-  const locality = [report.metadata.postalCode, report.metadata.city]
-    .filter(Boolean)
-    .join(" ");
-  const householdAddress = [report.metadata.address, locality]
-    .filter(Boolean)
-    .join(", ");
   const householdSize = [
     report.metadata.adultCount === null
       ? null
@@ -558,14 +540,6 @@ export function BankReportView({ report }: { report: BankReportModel }) {
               <dt className="text-xs text-stone-500">Hushåll</dt>
               <dd className="mt-1 font-medium text-stone-900">
                 {report.summary.householdDisplayName}
-              </dd>
-            </div>
-          ) : null}
-          {householdAddress ? (
-            <div>
-              <dt className="text-xs text-stone-500">Adress</dt>
-              <dd className="mt-1 font-medium text-stone-900">
-                {householdAddress}
               </dd>
             </div>
           ) : null}

@@ -88,24 +88,9 @@ function createPlanningData(): BankReportPlanningData {
       valuationDate: "2026-08-15",
     },
     householdProfile: {
-      address: "Storgatan 12",
       adultCount: 2,
       childCount: 2,
-      children: [
-        { age: 8, birthYear: null, id: "child-1" },
-        { age: null, birthYear: 2021, id: "child-2" },
-      ],
-      city: "Halmstad",
       householdDisplayName: "Familjen Fischer",
-      postalCode: "302 42",
-    },
-    incomeMetadata: {
-      salaryOne: {
-        employer: "Halmstads kommun",
-        employmentType: "permanent",
-        occupation: "Avdelningschef",
-        incomeComment: "Bonus ingår inte i planeringen",
-      },
     },
     incomes: [{ monthlyValues: values(50_000) }],
     labels: { incomeLines: { salaryOne: "Lön Ola" } },
@@ -130,26 +115,18 @@ test("bank report has the approved professional information hierarchy", () => {
   assert.equal(report.summary.annualIncome, 600_000);
   assert.equal(report.summary.householdDisplayName, "Familjen Fischer");
   assert.deepEqual(report.metadata, {
-    address: "Storgatan 12",
     adultCount: 2,
     childCount: 2,
-    city: "Halmstad",
     householdDisplayName: "Familjen Fischer",
     missing: [],
-    postalCode: "302 42",
   });
   assert.equal(report.income.averageMonthlyAmount, 50_000);
   assert.deepEqual(report.income.items[0], {
     annualAmount: 600_000,
-    comment: "Bonus ingår inte i planeringen",
     displayName: "Lön Ola",
-    employer: "Halmstads kommun",
-    employmentType: "permanent",
-    employmentTypeLabel: "Tillsvidare",
     incomeLineKey: "salaryOne",
     monthlyAmount: 50_000,
     monthlyAmounts: savingsMonthIds.map((monthId) => ({ amount: 50_000, monthId })),
-    occupation: "Avdelningschef",
   });
 });
 
@@ -263,22 +240,10 @@ test("legacy planning data stays valid and missing report metadata is null", () 
   assert.equal(report.car.loanStatus, "unknown");
   assert.equal(report.savings.assets.liquidBuffer, null);
   assert.equal(report.metadata.householdDisplayName, null);
-  assert.equal(report.metadata.address, null);
   assert.equal(report.metadata.adultCount, null);
   assert.equal(report.metadata.childCount, null);
-  assert.equal(report.metadata.city, null);
-  assert.equal(report.metadata.postalCode, null);
   assert.deepEqual(report.income.items, []);
-  assert.deepEqual(
-    report.metadata.missing.map((metadata) => metadata.field),
-    [
-      "householdDisplayName",
-      "incomeEmployer",
-      "incomeEmploymentType",
-      "incomeOccupation",
-      "incomeComment",
-    ],
-  );
+  assert.deepEqual(report.metadata.missing, []);
 });
 
 test("an explicitly loan-free car is report-ready without UI interpretation", () => {
@@ -301,20 +266,11 @@ test("an explicitly loan-free car is report-ready without UI interpretation", ()
   assert.equal(report.car.monthlyLoanCost, 0);
 });
 
-test("income amount remains PlanningData truth while metadata is descriptive only", () => {
+test("income amounts and stable labels remain PlanningData truth without document metadata", () => {
   const planningData = createPlanningData();
   planningData.incomeLineValues = {
     salaryOne: values(68_500),
     salaryTwo: values(24_000),
-  };
-  planningData.incomeMetadata = {
-    ...planningData.incomeMetadata,
-    salaryTwo: {
-      employer: "Region Halland",
-      employmentType: "temporary",
-      occupation: "Sjuksköterska",
-      incomeComment: null,
-    },
   };
   planningData.labels = {
     ...planningData.labels,
@@ -330,11 +286,9 @@ test("income amount remains PlanningData truth while metadata is descriptive onl
 
   assert.equal(firstIncome?.annualAmount, 822_000);
   assert.equal(firstIncome?.monthlyAmount, 68_500);
-  assert.equal(firstIncome?.employer, "Halmstads kommun");
   assert.equal(secondIncome?.annualAmount, 288_000);
   assert.equal(secondIncome?.monthlyAmount, 24_000);
-  assert.equal(secondIncome?.employmentTypeLabel, "Visstid");
-  assert.equal("salary" in (planningData.incomeMetadata?.salaryOne ?? {}), false);
+  assert.equal(secondIncome?.displayName, "Lön Therese");
 });
 
 test("variable income has annual truth but no invented fixed monthly amount", () => {

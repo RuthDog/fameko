@@ -7,7 +7,7 @@ import { unstable_splitSqlQuery } from "wrangler";
 
 import { seedPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
 import { PlanningRepository } from "./planning-repository.ts";
-import { isPlanningData } from "./planning-schema.ts";
+import { isPlanningData, readPlanningData } from "./planning-schema.ts";
 
 const migrationUrl = new URL("../../migrations/0001_identity_foundation.sql", import.meta.url);
 const monthIds = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
@@ -186,7 +186,7 @@ test("FinancialAssetsData round-trips in the authoritative PlanningData document
   }
 });
 
-test("optional income and household metadata round-trip in PlanningData without migration", async () => {
+test("legacy metadata is readable but never returned in the canonical save shape", async () => {
   const { database, miniflare } = await createDatabase();
 
   try {
@@ -211,14 +211,22 @@ test("optional income and household metadata round-trip in PlanningData without 
         },
       },
     } as const;
+    assert.equal(isPlanningData(data), false);
+    const compatible = readPlanningData(data);
+    assert.ok(compatible);
+    assert.equal(isPlanningData(compatible), true);
     const created = await repository.create("household-a", 2026, data, 3);
     assert.ok(created);
 
     const stored = await repository.get("household-a", 2026);
-    assert.deepEqual(stored?.data.incomeMetadata, data.incomeMetadata);
-    assert.deepEqual(stored?.data.householdProfile, data.householdProfile);
-    assert.equal(stored?.data.incomeMetadata?.salaryOne.employmentType, "permanent");
-    assert.equal("salary" in stored!.data.incomeMetadata!.salaryOne, false);
+    assert.equal("incomeMetadata" in stored!.data, false);
+    assert.deepEqual(stored?.data.householdProfile, {
+      adultCount: 2,
+      childCount: 1,
+      householdDisplayName: "Familjen Solgläntan",
+    });
+    assert.equal(stored?.data.openingBalance, data.openingBalance);
+    assert.deepEqual(stored?.data.incomes, data.incomes);
   } finally {
     await miniflare.dispose();
   }

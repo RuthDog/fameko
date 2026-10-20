@@ -3,28 +3,18 @@
 import Image from "next/image";
 
 import {
-  createHouseholdChild,
   emptyHouseholdProfile,
   getHouseholdProfile,
-  householdChildAgeMax,
   householdCountMax,
-  type HouseholdChild,
   type HouseholdProfile,
 } from "../../shared/planning/household.ts";
 import { mobileTypography } from "./mobile-design-system.ts";
 
-type HouseholdTextField =
-  | "address"
-  | "city"
-  | "householdDisplayName"
-  | "postalCode";
+type HouseholdTextField = "householdDisplayName";
 type HouseholdCountField = "adultCount" | "childCount";
 
 const textFieldLengths: Record<HouseholdTextField, number> = {
-  address: 160,
-  city: 80,
   householdDisplayName: 120,
-  postalCode: 12,
 };
 
 function HouseholdTextInput({
@@ -96,103 +86,6 @@ function HouseholdCountInput({
   );
 }
 
-function ChildDetailRow({
-  child,
-  index,
-  onChange,
-  onRemove,
-}: {
-  child: HouseholdChild;
-  index: number;
-  onChange: (child: HouseholdChild) => void;
-  onRemove: () => void;
-}) {
-  const mode = child.birthYear !== null && child.birthYear !== undefined
-    ? "birthYear"
-    : "age";
-  const value = mode === "age" ? child.age : child.birthYear;
-
-  function changeMode(nextMode: "age" | "birthYear") {
-    onChange({
-      age: nextMode === "age" ? child.age ?? null : null,
-      birthYear: nextMode === "birthYear" ? child.birthYear ?? null : null,
-      id: child.id,
-    });
-  }
-
-  return (
-    <li className="rounded-[18px] border border-stone-200/80 bg-[#fbfaf7] p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm font-semibold text-stone-900">Barn {index + 1}</p>
-        <button
-          aria-label={`Ta bort uppgifter för barn ${index + 1}`}
-          className="min-h-9 rounded-full px-3 text-xs font-medium text-stone-400 transition hover:bg-stone-100 hover:text-stone-800"
-          onClick={onRemove}
-          type="button"
-        >
-          Ta bort
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-end">
-        <fieldset>
-          <legend className="mb-1.5 text-xs font-medium text-stone-600">Uppgift</legend>
-          <div className="inline-flex min-h-11 rounded-xl bg-stone-100 p-1">
-            {([
-              ["age", "Ålder"],
-              ["birthYear", "Födelseår"],
-            ] as const).map(([option, label]) => (
-              <button
-                aria-pressed={mode === option}
-                className={`rounded-lg px-3 text-sm font-medium transition ${
-                  mode === option
-                    ? "bg-white text-stone-950 shadow-sm"
-                    : "text-stone-500 hover:text-stone-800"
-                }`}
-                key={option}
-                onClick={() => changeMode(option)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
-        <label className="block min-w-0">
-          <span className="mb-1.5 block text-xs font-medium text-stone-600">
-            {mode === "age" ? "Ålder" : "Födelseår"}
-          </span>
-          <span className="relative block">
-            <input
-              aria-label={`${mode === "age" ? "Ålder" : "Födelseår"} för barn ${index + 1}`}
-              className="min-h-11 w-full rounded-xl border border-stone-200 bg-white px-3 pr-10 text-sm font-medium tabular-nums text-stone-900 outline-none transition placeholder:text-stone-300 focus:border-[#9aaa97] focus:ring-2 focus:ring-[#dce4da]"
-              inputMode="numeric"
-              max={mode === "age" ? householdChildAgeMax : 2200}
-              min={mode === "age" ? 0 : 1900}
-              onChange={(event) => {
-                const nextValue = event.target.value === "" ? null : Number(event.target.value);
-                onChange({
-                  age: mode === "age" ? nextValue : null,
-                  birthYear: mode === "birthYear" ? nextValue : null,
-                  id: child.id,
-                });
-              }}
-              placeholder={mode === "age" ? "0" : "2018"}
-              step={1}
-              type="number"
-              value={value ?? ""}
-            />
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-stone-400">
-              {mode === "age" ? "år" : null}
-            </span>
-          </span>
-        </label>
-      </div>
-    </li>
-  );
-}
-
 export function HouseholdOverview({
   data,
   onChange,
@@ -214,15 +107,6 @@ export function HouseholdOverview({
     }
 
     onChange({ ...household, [field]: value });
-  }
-
-  function updateChild(childId: string, child: HouseholdChild) {
-    onChange({
-      ...household,
-      children: household.children.map((current) =>
-        current.id === childId ? child : current,
-      ),
-    });
   }
 
   return (
@@ -266,32 +150,6 @@ export function HouseholdOverview({
                 value={household.householdDisplayName}
               />
             </div>
-            <div className="sm:col-span-2">
-              <HouseholdTextInput
-                autoComplete="street-address"
-                field="address"
-                label="Adress"
-                onChange={updateText}
-                placeholder="Gatuadress"
-                value={household.address}
-              />
-            </div>
-            <HouseholdTextInput
-              autoComplete="postal-code"
-              field="postalCode"
-              label="Postnummer"
-              onChange={updateText}
-              placeholder="123 45"
-              value={household.postalCode}
-            />
-            <HouseholdTextInput
-              autoComplete="address-level2"
-              field="city"
-              label="Ort"
-              onChange={updateText}
-              placeholder="Ort"
-              value={household.city}
-            />
           </fieldset>
 
           <div className="mt-auto border-t border-stone-200/80 pt-7 lg:mt-9">
@@ -299,7 +157,7 @@ export function HouseholdOverview({
               Hushållet, inte personerna
             </p>
             <p className="mt-2 max-w-xl text-xs leading-5 text-stone-500">
-              Inga namn, personnummer eller kontaktuppgifter behövs. Adressen hör till hushållet och är skild från boendets ekonomi.
+              Inga namn på personer, personnummer, kontaktuppgifter eller adresser behövs.
             </p>
           </div>
         </div>
@@ -334,53 +192,6 @@ export function HouseholdOverview({
         </fieldset>
       </section>
 
-      <section
-        aria-labelledby="household-children-title"
-        className="rounded-[24px] border border-stone-200/80 bg-white p-5 sm:p-7"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-[#71816d]">Valfritt</p>
-            <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-stone-950" id="household-children-title">
-              Barn
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-stone-500">
-              Lägg bara till ålder eller födelseår om det hjälper planeringen. Inga namn eller andra identifierande uppgifter sparas.
-            </p>
-          </div>
-          <button
-            className="min-h-10 shrink-0 rounded-full border border-stone-300 px-4 text-sm font-semibold text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:cursor-not-allowed disabled:text-stone-300"
-            disabled={household.children.length >= householdCountMax}
-            onClick={() => onChange(createHouseholdChild(household))}
-            type="button"
-          >
-            + Lägg till barnuppgift
-          </button>
-        </div>
-
-        {household.children.length ? (
-          <ul className="mt-6 grid gap-3 lg:grid-cols-2">
-            {household.children.map((child, index) => (
-              <ChildDetailRow
-                child={child}
-                index={index}
-                key={child.id}
-                onChange={(nextChild) => updateChild(child.id, nextChild)}
-                onRemove={() =>
-                  onChange({
-                    ...household,
-                    children: household.children.filter((item) => item.id !== child.id),
-                  })
-                }
-              />
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-6 rounded-[18px] bg-[#f8f7f3] px-4 py-5 text-sm leading-6 text-stone-500">
-            Inga barnuppgifter tillagda. Antal barn ovan kan fortfarande användas i hushållets översikt.
-          </p>
-        )}
-      </section>
     </div>
   );
 }

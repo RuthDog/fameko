@@ -42,11 +42,10 @@ test("BankReportView receives only BankReportModel and contains no economic sele
   assert.match(routeSource, /buildBankReportModel\(planning\.data/);
 });
 
-test("the financial overview presents household address and size from BankReportModel", () => {
-  assert.match(viewSource, /report\.metadata\.address/);
+test("the financial overview presents minimized household identity and size", () => {
   assert.match(viewSource, /report\.metadata\.adultCount/);
   assert.match(viewSource, /report\.metadata\.childCount/);
-  assert.match(viewSource, />Adress</);
+  assert.doesNotMatch(viewSource, /report\.metadata\.(address|postalCode|city)|>Adress</);
   assert.match(viewSource, />Hushållets storlek</);
 });
 
@@ -103,11 +102,8 @@ test("Executive Summary reuses structured report narrative and only prioritized 
   assert.doesNotMatch(viewSource, /Du bör|Du måste/);
 });
 
-test("income metadata and safe variable income presentation remain intact", () => {
-  assert.match(viewSource, /income\.employer/);
-  assert.match(viewSource, /income\.employmentTypeLabel/);
-  assert.match(viewSource, /income\.occupation/);
-  assert.match(viewSource, /income\.comment/);
+test("income presentation keeps labels and safe variable amounts without retired metadata", () => {
+  assert.doesNotMatch(viewSource, /income\.(employer|employmentTypeLabel|occupation|comment)/);
   assert.match(viewSource, /income\.monthlyAmount === null/);
   assert.match(viewSource, /formatCurrency\(income\.annualAmount\)/);
   assert.match(viewSource, /Varierande inkomst/);
@@ -136,7 +132,7 @@ test("Major Expenses uses the model top three unchanged", () => {
 
 test("data quality uses calm model-backed coverage instead of technical levels", () => {
   assert.match(viewSource, /getBankReportDataQualityItems\(report\)/);
-  assert.match(presentationSource, /report\.metadata\.missing/);
+  assert.doesNotMatch(presentationSource, /Arbetsgivare saknas|Befattning saknas|Anställningsform saknas/);
   assert.match(presentationSource, /"Inkomster"/);
   assert.match(presentationSource, /"Boende"/);
   assert.match(presentationSource, /"Sparande och tillgångar"/);

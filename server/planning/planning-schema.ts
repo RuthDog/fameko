@@ -1,7 +1,11 @@
 import { isCarData } from "../../shared/planning/car.ts";
 import { isFinancialAssetsData } from "../../shared/planning/financial-assets.ts";
 import { isHousingData } from "../../shared/planning/housing.ts";
-import { isHouseholdProfile } from "../../shared/planning/household.ts";
+import { minimizePlanningData } from "../../shared/planning/data-minimization.ts";
+import {
+  isCurrentHouseholdProfile,
+  isHouseholdProfile,
+} from "../../shared/planning/household.ts";
 import {
   isIncomeMetadataMap,
 } from "../../shared/planning/income-metadata.ts";
@@ -183,7 +187,7 @@ function isExpenseItem(value: unknown): boolean {
   );
 }
 
-export function isPlanningData(value: unknown): value is PlanningDataJson {
+function isPlanningDataShape(value: unknown, allowRetiredMetadata: boolean): value is PlanningDataJson {
   if (
     !isObject(value) ||
     !hasOnlyKeys(value, [
@@ -200,7 +204,7 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
       "carData",
       "financialAssetsData",
       "householdProfile",
-      "incomeMetadata",
+      ...(allowRetiredMetadata ? ["incomeMetadata"] : []),
     ])
   ) {
     return false;
@@ -226,9 +230,28 @@ export function isPlanningData(value: unknown): value is PlanningDataJson {
     (value.carData === undefined || isCarData(value.carData)) &&
     (value.financialAssetsData === undefined ||
       isFinancialAssetsData(value.financialAssetsData)) &&
-    isHouseholdProfile(value.householdProfile) &&
-    isIncomeMetadataMap(value.incomeMetadata)
+    (allowRetiredMetadata
+      ? isHouseholdProfile(value.householdProfile) && isIncomeMetadataMap(value.incomeMetadata)
+      : isCurrentHouseholdProfile(value.householdProfile) && value.incomeMetadata === undefined)
   );
+}
+
+/** Strict validator for the minimized shape accepted by every new save. */
+export function isPlanningData(value: unknown): value is PlanningDataJson {
+  return isPlanningDataShape(value, false);
+}
+
+/**
+ * Reads a previously persisted v3 document and returns the minimized current shape.
+ * The source row is never changed; canonical data is only persisted after an explicit save.
+ */
+export function readPlanningData(value: unknown): PlanningDataJson | null {
+  if (!isPlanningDataShape(value, true)) {
+    return null;
+  }
+
+  const current = minimizePlanningData(value);
+  return isPlanningData(current) ? current : null;
 }
 
 export function serializedPlanningDataSize(value: unknown): number {

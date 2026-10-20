@@ -5,19 +5,22 @@ export const householdAddressMaxLength = 160;
 export const householdPostalCodeMaxLength = 12;
 export const householdCityMaxLength = 80;
 
-export type HouseholdChild = {
+type LegacyHouseholdChild = {
   age?: number | null;
   birthYear?: number | null;
   id: string;
 };
 
 export type HouseholdProfile = {
-  address?: string | null;
   adultCount?: number | null;
   childCount?: number | null;
-  children?: HouseholdChild[];
-  city?: string | null;
   householdDisplayName?: string | null;
+};
+
+type LegacyHouseholdProfile = HouseholdProfile & {
+  address?: string | null;
+  children?: LegacyHouseholdChild[];
+  city?: string | null;
   postalCode?: string | null;
 };
 
@@ -26,13 +29,9 @@ export type HouseholdPlanningData = {
 };
 
 export const emptyHouseholdProfile: Required<HouseholdProfile> = {
-  address: null,
   adultCount: null,
   childCount: null,
-  children: [],
-  city: null,
   householdDisplayName: null,
-  postalCode: null,
 };
 
 function normalizedOptionalText(value: string | null | undefined, maxLength: number) {
@@ -80,35 +79,24 @@ function isOptionalNullableInteger(value: unknown, max: number) {
 }
 
 export function getHouseholdProfile(
-  data: HouseholdPlanningData,
+  data: object,
 ): Required<HouseholdProfile> {
+  const planningData = data as HouseholdPlanningData;
   return {
-    address: data.householdProfile?.address ?? null,
-    adultCount: data.householdProfile?.adultCount ?? null,
-    childCount: data.householdProfile?.childCount ?? null,
-    children: (data.householdProfile?.children ?? []).map((child) => ({
-      age: child.age ?? null,
-      birthYear: child.birthYear ?? null,
-      id: child.id,
-    })),
-    city: data.householdProfile?.city ?? null,
+    adultCount: planningData.householdProfile?.adultCount ?? null,
+    childCount: planningData.householdProfile?.childCount ?? null,
     householdDisplayName:
-      data.householdProfile?.householdDisplayName ?? null,
-    postalCode: data.householdProfile?.postalCode ?? null,
+      planningData.householdProfile?.householdDisplayName ?? null,
   };
 }
 
-export function updateHouseholdProfile<T extends HouseholdPlanningData>(
+export function updateHouseholdProfile<T extends object>(
   data: T,
   profile: HouseholdProfile,
 ): T & { householdProfile: HouseholdProfile } {
   return {
     ...data,
     householdProfile: {
-      address: normalizedOptionalText(
-        profile.address,
-        householdAddressMaxLength,
-      ),
       adultCount: normalizedOptionalInteger(
         profile.adultCount,
         householdCountMax,
@@ -117,33 +105,15 @@ export function updateHouseholdProfile<T extends HouseholdPlanningData>(
         profile.childCount,
         householdCountMax,
       ),
-      children: (profile.children ?? []).slice(0, householdCountMax).map((child) => {
-        const age = normalizedOptionalInteger(child.age, householdChildAgeMax);
-        const birthYear =
-          child.birthYear === null || child.birthYear === undefined
-            ? null
-            : Math.min(2200, Math.max(1900, Math.trunc(child.birthYear)));
-
-        return {
-          age,
-          birthYear: age === null ? birthYear : null,
-          id: child.id.trim().slice(0, 64),
-        };
-      }),
-      city: normalizedOptionalText(profile.city, householdCityMaxLength),
       householdDisplayName: normalizedOptionalText(
         profile.householdDisplayName,
         householdNameMaxLength,
-      ),
-      postalCode: normalizedOptionalText(
-        profile.postalCode,
-        householdPostalCodeMaxLength,
       ),
     },
   };
 }
 
-export function updateHouseholdDisplayName<T extends HouseholdPlanningData>(
+export function updateHouseholdDisplayName<T extends object>(
   data: T,
   householdDisplayName: string,
 ): T & { householdProfile: HouseholdProfile } {
@@ -153,27 +123,6 @@ export function updateHouseholdDisplayName<T extends HouseholdPlanningData>(
   });
 }
 
-export function createHouseholdChild(
-  profile: HouseholdProfile,
-): Required<HouseholdProfile> {
-  const household = getHouseholdProfile({ householdProfile: profile });
-  const existingIds = new Set(household.children.map((child) => child.id));
-  let index = household.children.length + 1;
-
-  while (existingIds.has(`child-${index}`)) {
-    index += 1;
-  }
-
-  return {
-    ...household,
-    childCount: Math.max(household.childCount ?? 0, household.children.length + 1),
-    children: [
-      ...household.children,
-      { age: null, birthYear: null, id: `child-${index}` },
-    ],
-  };
-}
-
 export function hasHouseholdProfileData(profile: HouseholdProfile | undefined) {
   if (!profile) {
     return false;
@@ -181,15 +130,8 @@ export function hasHouseholdProfileData(profile: HouseholdProfile | undefined) {
 
   return Boolean(
     profile.householdDisplayName?.trim() ||
-      profile.address?.trim() ||
-      profile.postalCode?.trim() ||
-      profile.city?.trim() ||
       profile.adultCount !== null && profile.adultCount !== undefined ||
-      profile.childCount !== null && profile.childCount !== undefined ||
-      profile.children?.some(
-        (child) => child.age !== null && child.age !== undefined ||
-          child.birthYear !== null && child.birthYear !== undefined,
-      ),
+      profile.childCount !== null && profile.childCount !== undefined,
   );
 }
 
@@ -207,7 +149,7 @@ export function getHouseholdSizeLabel(profile: HouseholdProfile | undefined) {
   return parts.length ? parts.join(", ") : null;
 }
 
-export function isHouseholdProfile(value: unknown): boolean {
+export function isHouseholdProfile(value: unknown): value is LegacyHouseholdProfile | undefined {
   if (value === undefined) {
     return true;
   }
@@ -262,4 +204,30 @@ export function isHouseholdProfile(value: unknown): boolean {
     ids.add(child.id);
     return true;
   });
+}
+
+/** Validator for the minimized shape accepted by new saves. */
+export function isCurrentHouseholdProfile(value: unknown): boolean {
+  return value === undefined || (
+    isRecord(value) &&
+    hasOnlyKeys(value, ["adultCount", "childCount", "householdDisplayName"]) &&
+    isOptionalNullableInteger(value.adultCount, householdCountMax) &&
+    isOptionalNullableInteger(value.childCount, householdCountMax) &&
+    isOptionalNullableString(value.householdDisplayName, householdNameMaxLength)
+  );
+}
+
+/** Removes retired document metadata without mutating a legacy profile. */
+export function minimizeHouseholdProfile(profile: LegacyHouseholdProfile): HouseholdProfile {
+  return {
+    adultCount: normalizedOptionalInteger(profile.adultCount, householdCountMax),
+    childCount: normalizedOptionalInteger(
+      profile.childCount ?? (profile.children?.length ? profile.children.length : null),
+      householdCountMax,
+    ),
+    householdDisplayName: normalizedOptionalText(
+      profile.householdDisplayName,
+      householdNameMaxLength,
+    ),
+  };
 }

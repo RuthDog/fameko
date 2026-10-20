@@ -100,13 +100,11 @@ function SavingsPreview({ source }: { source: SavingsPreviewSource }) {
 function HouseholdPreview({ data }: { data: HouseholdProfile | undefined }) {
   const hasData = hasHouseholdProfileData(data);
   const size = getHouseholdSizeLabel(data);
-  const locality = [data?.postalCode, data?.city].filter(Boolean).join(" ") || null;
   const metrics = [
     data?.householdDisplayName
       ? { label: "Hushållsnamn", value: data.householdDisplayName }
       : null,
     size ? { label: "Storlek", value: size } : null,
-    locality ? { label: "Ort", value: locality } : null,
   ].filter((metric) => metric !== null);
   const status: PersonalEconomyStatus = hasData
     ? {
