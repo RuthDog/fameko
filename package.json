@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@opennextjs/cloudflare": "1.20.13",
-    "next": "^15.5.28",
+    "next": "16.4.3",
     "pdf-lib": "^1.17.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -35,11 +35,11 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.5.28",
+    "eslint-config-next": "16.4.3",
     "postcss": "^8.4.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.0.0",
-    "wrangler": "^4.151.1"
+    "wrangler": "4.154.0"
   },
   "overrides": {
     "@node-minify/core": {
