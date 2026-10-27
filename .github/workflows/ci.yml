@@ -1,0 +1,112 @@
+name: Linux CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify dependency tree
+        run: npm ls @opennextjs/cloudflare @opennextjs/aws @node-minify/core glob next react react-dom wrangler --all
+
+      - name: Report unresolved audit findings and fail on security drift
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit.json
+          audit_exit=$?
+          set -e
+
+          echo "npm audit exit code: ${audit_exit}"
+
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const report = JSON.parse(readFileSync("npm-audit.json", "utf8"));
+          if (!report.metadata?.vulnerabilities || !report.vulnerabilities) {
+            throw new Error("npm audit did not return a valid vulnerability report.");
+          }
+
+          const maximumKnownSeverity = new Map([
+            ["miniflare", "moderate"],
+            ["next", "moderate"],
+            ["postcss", "high"],
+            ["undici", "high"],
+            ["wrangler", "moderate"],
+          ]);
+          const severityRank = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
+          const findings = Object.entries(report.vulnerabilities);
+          const unexpected = findings.filter(([name]) => !maximumKnownSeverity.has(name));
+          const escalated = findings.filter(([name, finding]) =>
+            maximumKnownSeverity.has(name) &&
+            severityRank[finding.severity] > severityRank[maximumKnownSeverity.get(name)]
+          );
+
+          for (const [name, finding] of findings) {
+            console.log(`::warning title=Unresolved npm audit finding::${name} (${finding.severity})`);
+          }
+          console.log(`Unresolved known audit findings: ${findings.length}`);
+
+          if (report.metadata.vulnerabilities.critical > 0) {
+            throw new Error("Critical npm audit finding detected.");
+          }
+          if (unexpected.length || escalated.length) {
+            throw new Error(
+              `npm audit security drift: unexpected=${unexpected.map(([name]) => name).join(",") || "none"}; ` +
+              `escalated=${escalated.map(([name]) => name).join(",") || "none"}`
+            );
+          }
+          NODE
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Planning tests
+        run: npm run test:planning
+
+      - name: Auth tests
+        run: npm run test:auth
+
+      - name: Financial Health tests
+        run: npm run test:financial-health
+
+      - name: Year Management tests
+        run: npm run test:year-management
+
+      - name: Bank Report and PDF tests
+        run: npm run test:bank-report-pdf
+
+      - name: Browser Storage and Save Experience tests
+        run: node --experimental-strip-types --test --test-force-exit shared/planning/browser-storage.test.ts shared/workspace/save-experience.test.ts
+
+      - name: Next production build
+        run: npm run build
+
+      - name: OpenNext build
+        run: npm run opennext:build
