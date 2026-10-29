@@ -119,3 +119,27 @@ test("access mode keeps the original request URL same-origin rule", () => {
     false,
   );
 });
+
+test("workos mode keeps the same strict origin rule as access", () => {
+  assert.equal(
+    isSameOriginJsonRequest(
+      jsonRequest({
+        host: "auth-staging.fameko.se",
+        origin: "https://auth-staging.fameko.se",
+        url: "https://auth-staging.fameko.se/app/api/planning-years/2026",
+      }),
+      "workos",
+    ),
+    true,
+  );
+  assert.equal(
+    isSameOriginJsonRequest(
+      jsonRequest({
+        host: "192.168.1.175:3001",
+        origin: "http://192.168.1.175:3001",
+      }),
+      "workos",
+    ),
+    false,
+  );
+});

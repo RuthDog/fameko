@@ -2,7 +2,7 @@ import { isLocalDevelopmentRequest } from "../auth/development-auth.ts";
 
 export function isSameOriginJsonRequest(
   request: Request,
-  authorizationMode: "access" | "development" = "access",
+  authorizationMode: "access" | "development" | "workos" = "access",
   environment: Record<string, string | undefined> = process.env,
 ): boolean {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";

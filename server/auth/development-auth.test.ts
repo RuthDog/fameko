@@ -129,7 +129,10 @@ test("production LAN and fameko.se continue through ordinary Access authorizatio
 
   for (const request of requests) {
     const authorization = await authorizeRequest(request, {
-      environment: { NODE_ENV: "production" },
+      environment: {
+        FAMEKO_AUTH_MODE: "cloudflare_access",
+        NODE_ENV: "production",
+      },
     });
 
     assert.deepEqual(authorization, { code: "token_missing", ok: false });

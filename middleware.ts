@@ -1,8 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  applyResponseHeaders,
+  authkit,
+  handleAuthkitProxy,
+  partitionAuthkitHeaders,
+} from "@workos-inc/authkit-nextjs";
+import {
   authorizeRequest,
   type AuthorizationFailureCode,
+  type AuthorizationResult,
 } from "./server/auth/authorize-request.ts";
+import {
+  AuthConfigurationError,
+  getAuthMode,
+  validateWorkosConfiguration,
+  workosStagingAuthMode,
+} from "./server/auth/auth-mode.ts";
 
 type ErrorPresentation = {
   description: string;
@@ -117,20 +130,94 @@ function errorPage(error: ErrorPresentation): NextResponse {
   });
 }
 
-export async function middleware(request: NextRequest) {
-  const authorization = await authorizeRequest(request);
-
-  if (!authorization.ok) {
-    return errorPage(errorPresentations[authorization.code]);
-  }
-
-  const requestHeaders = new Headers(request.headers);
+function authorizedResponse(
+  requestHeaders: Headers,
+  authorization: Extract<AuthorizationResult, { ok: true }>,
+): NextResponse {
   requestHeaders.delete("x-fameko-household-id");
   requestHeaders.delete("x-fameko-user-id");
   requestHeaders.set("x-fameko-household-id", authorization.context.household.id);
   requestHeaders.set("x-fameko-user-id", authorization.context.user.id);
 
   return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
+async function workosMiddleware(request: NextRequest): Promise<NextResponse> {
+  let redirectUri: string;
+  try {
+    ({ redirectUri } = validateWorkosConfiguration(process.env));
+  } catch {
+    return errorPage(errorPresentations.configuration_missing);
+  }
+
+  let transientRefreshFailure = false;
+  let authkitResult;
+  try {
+    authkitResult = await authkit(request, {
+      redirectUri,
+      refreshBufferSeconds: 60,
+      onSessionRefreshError: ({ isTransient }) => {
+        transientRefreshFailure = isTransient;
+      },
+    });
+  } catch {
+    return errorPage(errorPresentations.token_invalid);
+  }
+
+  if (transientRefreshFailure && !authkitResult.session.user) {
+    const { responseHeaders } = partitionAuthkitHeaders(request, authkitResult.headers);
+    return applyResponseHeaders(
+      errorPage(errorPresentations.database_unavailable),
+      responseHeaders,
+    );
+  }
+
+  if (!authkitResult.session.user) {
+    return handleAuthkitProxy(request, authkitResult.headers, {
+      redirect: "/sign-in",
+    });
+  }
+
+  const authorization = await authorizeRequest(request, {
+    workosUserResolver: async () => authkitResult.session.user,
+  });
+  const { requestHeaders, responseHeaders } = partitionAuthkitHeaders(
+    request,
+    authkitResult.headers,
+  );
+
+  if (!authorization.ok) {
+    return applyResponseHeaders(
+      errorPage(errorPresentations[authorization.code]),
+      responseHeaders,
+    );
+  }
+
+  return applyResponseHeaders(
+    authorizedResponse(requestHeaders, authorization),
+    responseHeaders,
+  );
+}
+
+export async function middleware(request: NextRequest) {
+  try {
+    if (getAuthMode(process.env) === workosStagingAuthMode) {
+      return workosMiddleware(request);
+    }
+  } catch (error) {
+    if (!(error instanceof AuthConfigurationError)) {
+      return errorPage(errorPresentations.configuration_missing);
+    }
+    // authorizeRequest still permits the explicit local development context.
+  }
+
+  const authorization = await authorizeRequest(request);
+
+  if (!authorization.ok) {
+    return errorPage(errorPresentations[authorization.code]);
+  }
+
+  return authorizedResponse(new Headers(request.headers), authorization);
 }
 
 export const config = {

@@ -81,6 +81,7 @@ test("authorize-request uses verified Access identity and D1 as one fail-closed 
   const environment = {
     CF_ACCESS_AUD: audience,
     CF_ACCESS_TEAM_DOMAIN: issuer,
+    FAMEKO_AUTH_MODE: "cloudflare_access",
   };
 
   try {

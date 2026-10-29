@@ -188,3 +188,15 @@ export async function resolveOrProvisionAuthorizedIdentity(
 
   return context;
 }
+
+export async function provisionWorkosAccountAfterVerifiedCallback(
+  database: D1Database,
+  authContext: VerifiedAuthContext,
+): Promise<AuthorizedPilotContext> {
+  const normalized = normalizeAuthContext(authContext);
+  if (normalized.provider !== "workos") {
+    throw new FirstLoginProvisioningError();
+  }
+
+  return resolveOrProvisionAuthorizedIdentity(database, normalized);
+}

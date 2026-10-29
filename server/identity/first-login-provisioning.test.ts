@@ -7,7 +7,10 @@ import { unstable_splitSqlQuery } from "wrangler";
 
 import { currentPlanningYear, emptyPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
 import { provisionPilotIdentity } from "./provision-pilot.ts";
-import { resolveOrProvisionAuthorizedIdentity } from "./first-login-provisioning.ts";
+import {
+  provisionWorkosAccountAfterVerifiedCallback,
+  resolveOrProvisionAuthorizedIdentity,
+} from "./first-login-provisioning.ts";
 import type { VerifiedAuthContext } from "./identity-types.ts";
 
 const migrationUrl = new URL("../../migrations/0001_identity_foundation.sql", import.meta.url);
@@ -195,6 +198,81 @@ test("an existing manually provisioned identity gets exactly one missing Plannin
       households: 1,
       planning_years: 1,
       users: 1,
+    });
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("verified WorkOS callback is idempotent under concurrent delivery", async () => {
+  const { database, miniflare } = await createDatabase("workos-callback-concurrent");
+  const workosContext = {
+    provider: "workos",
+    providerSubject: "workos-user-a",
+    verifiedEmail: "adult-a@example.test",
+  };
+
+  try {
+    const [first, second] = await Promise.all([
+      provisionWorkosAccountAfterVerifiedCallback(database, workosContext),
+      provisionWorkosAccountAfterVerifiedCallback(database, workosContext),
+    ]);
+
+    assert.equal(first.user.id, second.user.id);
+    assert.equal(first.household.id, second.household.id);
+    assert.deepEqual(await getCounts(database), {
+      auth_identities: 1,
+      household_members: 1,
+      households: 1,
+      planning_years: 1,
+      users: 1,
+    });
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("same email never links a new WorkOS subject to existing pilot data", async () => {
+  const { database, miniflare } = await createDatabase("workos-no-email-link");
+
+  try {
+    const pilot = await provisionPilotIdentity(database, {
+      email: "shared@example.test",
+      providerSubject: "access-pilot-subject",
+    });
+    const workos = await provisionWorkosAccountAfterVerifiedCallback(database, {
+      provider: "workos",
+      providerSubject: "workos-new-subject",
+      verifiedEmail: "shared@example.test",
+    });
+
+    assert.notEqual(workos.user.id, pilot.userId);
+    assert.notEqual(workos.household.id, pilot.householdId);
+    assert.deepEqual(await getCounts(database), {
+      auth_identities: 2,
+      household_members: 2,
+      households: 2,
+      planning_years: 1,
+      users: 2,
+    });
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("WorkOS callback provisioning rejects every other provider", async () => {
+  const { database, miniflare } = await createDatabase("workos-provider-boundary");
+
+  try {
+    await assert.rejects(
+      provisionWorkosAccountAfterVerifiedCallback(database, authContext),
+    );
+    assert.deepEqual(await getCounts(database), {
+      auth_identities: 0,
+      household_members: 0,
+      households: 0,
+      planning_years: 0,
+      users: 0,
     });
   } finally {
     await miniflare.dispose();

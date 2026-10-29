@@ -121,6 +121,7 @@ import { RecognizedBrandLogo } from "../components/brand-logo.tsx";
 import { FamekoSymbol } from "../components/fameko-symbol.tsx";
 import { AnchoredContextMenu } from "../components/anchored-context-menu.tsx";
 import { BankReportEntryPoint } from "./bank-report-entry-point.tsx";
+import { AccountMenu } from "./account-menu.tsx";
 
 type Status = "green" | "yellow" | "red";
 type ChangeScope = PlanningEditScope;
@@ -6421,7 +6422,7 @@ export default function Home() {
       cloudSaveState === "saving" ||
       cloudSaveState === "conflict"
     ) {
-      return;
+      return false;
     }
 
     const dataToSave = planningData;
@@ -6440,23 +6441,25 @@ export default function Home() {
       setSavedSnapshot(snapshotToSave);
       setCloudSaveState("saved");
       setCloudMessage("Sparat i molnet");
+      return true;
     } catch (error) {
       if (isPlanningSessionChange(error)) {
         setSessionGuardState("blocked");
         setCloudMessage(
           "Den inloggade användaren har ändrats. Ekonomin är dold och sparningen stoppades.",
         );
-        return;
+        return false;
       }
 
       if (error instanceof PlanningApiError && error.status === 409) {
         setCloudSaveState("conflict");
         setCloudMessage("Nyare data finns i molnet. Ladda om sidan innan du sparar igen.");
-        return;
+        return false;
       }
 
       setCloudSaveState("error");
       setCloudMessage("Det gick inte att spara. Dina ändringar finns kvar i den öppna fliken.");
+      return false;
     }
   }
 
@@ -7072,6 +7075,10 @@ export default function Home() {
               hasUnsavedChanges={hasUnsavedChanges}
               onSave={() => void saveToCloud()}
               operationState={cloudSaveState}
+            />
+            <AccountMenu
+              hasUnsavedChanges={hasUnsavedChanges}
+              onSave={saveToCloud}
             />
           </div>
         </div>
