@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { GET as getSignUpDocument } from "../../app/sign-up/route.ts";
 import { workosStagingAuthMode } from "./auth-mode.ts";
 import {
   registrationAttestationCookieName,
@@ -38,6 +39,76 @@ function cookieValue(setCookie: string | null, name: string): string | undefined
   const match = new RegExp(`(?:^|,\\s*)${name}=([^;]+)`).exec(setCookie);
   return match?.[1];
 }
+
+test("registration document preserves Origin without leaking URL details", async () => {
+  const previousEnvironment = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(environment)) {
+    previousEnvironment.set(name, process.env[name]);
+    process.env[name] = value;
+  }
+
+  try {
+    const response = getSignUpDocument(
+      new Request("https://auth-staging.example.test/sign-up?error=adult-required"),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("referrer-policy"), "strict-origin");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(
+      response.headers.get("content-security-policy"),
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    );
+    assert.match(await response.text(), /<form action="\/sign-up" method="post">/);
+  } finally {
+    for (const [name, value] of previousEnvironment) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
+});
+
+test("registration rejects an opaque null Origin and accepts only the trusted Origin", async () => {
+  const opaqueOrigin = await acceptWorkosSignUp(
+    new Request("https://internal-worker.example.test/sign-up", {
+      body: "adult-confirmation=confirmed",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "null",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+      },
+      method: "POST",
+    }),
+    environment,
+  );
+  assert.equal(opaqueOrigin.status, 404);
+  assert.equal(await opaqueOrigin.text(), "Not found");
+
+  const trustedOrigin = await acceptWorkosSignUp(
+    new Request("https://internal-worker.example.test/sign-up", {
+      body: "adult-confirmation=confirmed",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://auth-staging.example.test",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+      },
+      method: "POST",
+    }),
+    environment,
+  );
+  assert.equal(trustedOrigin.status, 303);
+  assert.equal(
+    trustedOrigin.headers.get("location"),
+    "https://auth-staging.example.test/auth/start-sign-up",
+  );
+});
 
 test("WorkOS session refresh composes inside the existing /app middleware perimeter", async () => {
   const source = await readFile(middlewareUrl, "utf8");
