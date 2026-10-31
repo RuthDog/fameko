@@ -37,9 +37,13 @@ test("privacy and terms routes use the shared mobile legal-document presentation
   assert.match(privacyPage, /privacyDocument/);
   assert.match(termsPage, /termsDocument/);
   assert.match(legalPage, /ARBETSUTKAST/);
-  assert.match(legalPage, /max-w-3xl/);
-  assert.match(legalPage, /px-4/);
+  assert.match(legalPage, /max-w-\[720px\]/);
+  assert.match(legalPage, /text-\[26px\]/);
+  assert.match(legalPage, /text-\[15px\]/);
+  assert.match(legalPage, /space-y-\[11px\]/);
+  assert.match(legalPage, /Version \{document\.version\}/);
   assert.match(legalPage, /href="\/sign-up"/);
+  assert.doesNotMatch(legalPage, /rounded-\[28px\]|shadow-|bg-amber-|rounded-2xl/);
 });
 
 test("auth staging minimizes automatic request logs while retaining bounded diagnostics", async () => {

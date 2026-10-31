@@ -4,38 +4,33 @@ import type { LegalDocument } from "../server/legal/legal-documents.ts";
 
 export function LegalDocumentPage({ document }: { document: LegalDocument }) {
   return (
-    <main className="min-h-screen bg-[#f7f5ef] px-4 py-8 text-stone-900 sm:px-6 sm:py-12">
-      <article className="mx-auto max-w-3xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(28,25,23,0.08)]">
-        <header className="border-b border-stone-200 bg-[#eef2ea] px-6 py-8 sm:px-10 sm:py-10">
-          <Link className="text-sm font-semibold text-[#3f5140] underline-offset-4 hover:underline" href="/">
+    <main className="min-h-screen bg-[#faf9f7] px-5 py-8 text-stone-900 sm:px-6 sm:py-10">
+      <article className="mx-auto w-full max-w-[720px]">
+        <header>
+          <Link className="text-[13px] font-semibold text-stone-700 underline-offset-4 hover:underline" href="/">
             Fameko
           </Link>
-          <div className="mt-5 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold tracking-[0.16em] text-amber-950">
+          <p className="mt-5 text-[11px] font-semibold tracking-[0.08em] text-stone-500">
             ARBETSUTKAST – INTE SLUTLIGT GODKÄNT
-          </div>
-          <h1 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-stone-950 sm:text-5xl">
+          </p>
+          <h1 className="mt-2 text-[26px] font-semibold leading-tight tracking-[-0.025em] text-stone-950">
             {document.title}
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-stone-700 sm:text-lg">
+          <p className="mt-3 text-[14px] leading-[1.65] text-stone-600 sm:text-[13px] sm:leading-[1.6]">
             {document.intro}
           </p>
-          <dl className="mt-6 grid gap-2 text-sm text-stone-600 sm:grid-cols-3">
-            <div><dt className="font-semibold text-stone-900">Version</dt><dd>{document.version}</dd></div>
-            <div><dt className="font-semibold text-stone-900">Senast inventerad</dt><dd>{document.updatedAt}</dd></div>
-            <div><dt className="font-semibold text-stone-900">Gäller från</dt><dd>{document.effectiveDate}</dd></div>
-          </dl>
         </header>
 
-        <div className="space-y-10 px-6 py-8 sm:px-10 sm:py-12">
+        <div className="mt-8 space-y-6">
           {document.sections.map((section) => (
             <section key={section.heading}>
-              <h2 className="text-xl font-semibold tracking-[-0.025em] text-stone-950 sm:text-2xl">
+              <h2 className="text-[15px] font-semibold leading-6 text-stone-900">
                 {section.heading}
               </h2>
-              <div className="mt-3 space-y-3 text-[15px] leading-7 text-stone-700 sm:text-base">
+              <div className="mt-2 space-y-[11px] text-[14px] leading-[1.65] text-stone-700 sm:text-[13px] sm:leading-[1.6]">
                 {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
                 {section.bullets ? (
-                  <ul className="list-disc space-y-2 pl-5">
+                  <ul className="list-disc space-y-[10px] pl-5">
                     {section.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
                   </ul>
                 ) : null}
@@ -43,15 +38,19 @@ export function LegalDocumentPage({ document }: { document: LegalDocument }) {
             </section>
           ))}
 
-          <aside className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
+          <p className="border-t border-stone-200 pt-4 text-[12px] leading-[1.6] text-stone-500">
             Dokumentet innehåller platshållare och får inte presenteras som slutligt eller lanseringsklart.
-          </aside>
+          </p>
 
-          <nav aria-label="Juridiska dokument" className="flex flex-wrap gap-4 border-t border-stone-200 pt-6 text-sm font-semibold">
-            <Link className="text-[#3f5140] underline-offset-4 hover:underline" href="/privacy">Integritetspolicy</Link>
-            <Link className="text-[#3f5140] underline-offset-4 hover:underline" href="/terms">Användarvillkor</Link>
-            <Link className="text-[#3f5140] underline-offset-4 hover:underline" href="/sign-up">Till registreringen</Link>
+          <nav aria-label="Juridiska dokument" className="flex flex-wrap gap-x-4 gap-y-2 text-[12px] font-medium">
+            <Link className="text-stone-600 underline underline-offset-4 hover:text-stone-900" href="/privacy">Integritetspolicy</Link>
+            <Link className="text-stone-600 underline underline-offset-4 hover:text-stone-900" href="/terms">Användarvillkor</Link>
+            <Link className="text-stone-600 underline underline-offset-4 hover:text-stone-900" href="/sign-up">Till registreringen</Link>
           </nav>
+
+          <footer className="pb-2 text-[11px] leading-5 text-stone-500">
+            Version {document.version} · Senast inventerad {document.updatedAt} · Gäller från {document.effectiveDate}
+          </footer>
         </div>
       </article>
     </main>
