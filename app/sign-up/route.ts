@@ -55,7 +55,7 @@ function registrationPage(request: Request): Response {
   return new Response(body, {
     headers: {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com https://spontaneous-theme-13-staging.authkit.app; base-uri 'none'; frame-ancestors 'none'",
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "strict-origin",
       "X-Content-Type-Options": "nosniff",

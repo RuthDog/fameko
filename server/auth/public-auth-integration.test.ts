@@ -57,7 +57,7 @@ test("registration document preserves Origin without leaking URL details", async
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(
       response.headers.get("content-security-policy"),
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com https://spontaneous-theme-13-staging.authkit.app; base-uri 'none'; frame-ancestors 'none'",
     );
     assert.match(await response.text(), /<form action="\/sign-up" method="post">/);
   } finally {
@@ -136,8 +136,11 @@ test("new account writes exist only in the verified callback path", async () => 
       callback.indexOf("const database = await getFamekoDatabase"),
   );
   assert.match(signUp, /acceptWorkosSignUp/);
-  assert.match(signUp, /form-action 'self';/);
-  assert.doesNotMatch(signUp, /form-action[^\n]+api\.workos\.com/);
+  assert.match(
+    signUp,
+    /form-action 'self' https:\/\/api\.workos\.com https:\/\/spontaneous-theme-13-staging\.authkit\.app;/,
+  );
+  assert.doesNotMatch(signUp, /form-action[^\n]*\*/);
   assert.match(startSignUp, /getSignUpUrl/);
   assert.match(startSignUp, /continueWorkosSignUp/);
   assert.match(signUpHandler, /issueRegistrationAttestation/);
@@ -174,6 +177,7 @@ test("adult confirmation redirects only to an internal GET before WorkOS starts"
   );
   assert.ok(issuedToken);
   assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
 });
 
 test("internal GET consumes issued attestation and starts a callback-bound WorkOS flow", async () => {
@@ -234,6 +238,7 @@ test("internal GET consumes issued attestation and starts a callback-bound WorkO
     true,
   );
   assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
 
   let replayFactoryCalled = false;
   const replay = await continueWorkosSignUp(
