@@ -1,12 +1,10 @@
 import { getSignUpUrl } from "@workos-inc/authkit-nextjs";
-import { NextResponse } from "next/server";
 
 import {
-  isSameOriginFormRequest,
   publicAuthUnavailableResponse,
   publicWorkosAuthGate,
 } from "../../server/auth/public-auth-http.ts";
-import { adultRegistrationAttestation } from "../../server/auth/registration.ts";
+import { startWorkosSignUp } from "../../server/auth/workos-sign-up.ts";
 
 function registrationPage(request: Request): Response {
   const showAdultError = new URL(request.url).searchParams.get("error") === "adult-required";
@@ -71,31 +69,5 @@ export function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const gate = publicWorkosAuthGate(process.env);
-  if (!gate.ok) {
-    return publicAuthUnavailableResponse(gate.status);
-  }
-  if (!isSameOriginFormRequest(request)) {
-    return publicAuthUnavailableResponse(404);
-  }
-
-  const form = await request.formData();
-  if (form.get("adult-confirmation") !== "confirmed") {
-    return NextResponse.redirect(new URL("/sign-up?error=adult-required", request.url), 303);
-  }
-
-  try {
-    const url = await getSignUpUrl({
-      returnTo: "/app",
-      state: adultRegistrationAttestation,
-    });
-    const response = NextResponse.redirect(url, 303);
-    response.headers.set("Cache-Control", "no-store");
-    response.headers.set("Referrer-Policy", "no-referrer");
-    return response;
-  } catch {
-    const response = NextResponse.redirect(new URL("/auth/error", request.url), 303);
-    response.headers.set("Cache-Control", "no-store");
-    return response;
-  }
+  return startWorkosSignUp(request, process.env, getSignUpUrl);
 }

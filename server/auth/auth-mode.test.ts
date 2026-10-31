@@ -96,8 +96,33 @@ test("registration POST accepts only same-origin browser form submissions", () =
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "same-origin",
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    isSameOriginFormRequest(
+      new Request("https://auth-staging.example.test/sign-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
           Origin: "https://attacker.example",
           "Sec-Fetch-Site": "cross-site",
+        },
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    isSameOriginFormRequest(
+      new Request("https://auth-staging.example.test/sign-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
         },
       }),
     ),

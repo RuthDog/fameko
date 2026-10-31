@@ -41,11 +41,15 @@ export function isSameOriginFormRequest(request: Request): boolean {
 
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
-  if (!origin || origin !== new URL(request.url).origin) {
+  if (origin && origin !== new URL(request.url).origin) {
     return false;
   }
 
-  return !fetchSite || fetchSite === "same-origin";
+  if (fetchSite && fetchSite !== "same-origin") {
+    return false;
+  }
+
+  return Boolean(origin) || fetchSite === "same-origin";
 }
 
 export function publicAuthUnavailableResponse(status: 404 | 503): Response {
