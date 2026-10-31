@@ -17,6 +17,7 @@ const workosEnvironment = {
   WORKOS_CLIENT_ID: "client_test",
   WORKOS_COOKIE_PASSWORD: "x".repeat(32),
   WORKOS_ISSUER: "https://api.workos.com/",
+  WORKOS_STAGING_ALLOWED_EMAILS: "allowed-a@example.test,allowed-b@example.test",
 };
 
 test("auth mode is explicit and unknown or missing values fail closed", () => {
@@ -35,6 +36,22 @@ test("WorkOS mode requires complete secrets and a safe callback URL", () => {
   });
   assert.throws(
     () => validateWorkosConfiguration({ ...workosEnvironment, WORKOS_API_KEY: undefined }),
+    AuthConfigurationError,
+  );
+  assert.throws(
+    () =>
+      validateWorkosConfiguration({
+        ...workosEnvironment,
+        WORKOS_STAGING_ALLOWED_EMAILS: undefined,
+      }),
+    AuthConfigurationError,
+  );
+  assert.throws(
+    () =>
+      validateWorkosConfiguration({
+        ...workosEnvironment,
+        WORKOS_STAGING_ALLOWED_EMAILS: "allowed-a@example.test,allowed-a@example.test",
+      }),
     AuthConfigurationError,
   );
   assert.throws(

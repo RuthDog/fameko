@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fameko-auth-staging",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "d1_databases": [
+    {
+      "binding": "FAMEKO_DB",
+      "database_name": "fameko-auth-staging-eu",
+      "database_id": "49227d32-53b8-47f3-a57e-dad4aed13ab2",
+      "migrations_dir": "migrations",
+      "remote": true
+    }
+  ],
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "fameko-auth-staging"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "vars": {
+    "FAMEKO_AUTH_MODE": "workos_staging",
+    "NEXT_PUBLIC_WORKOS_REDIRECT_URI": "https://auth-staging.fameko.se/auth/callback",
+    "WORKOS_ISSUER": "https://api.workos.com/",
+    "WORKOS_COOKIE_NAME": "fameko-auth-staging-session",
+    "WORKOS_COOKIE_SAMESITE": "lax",
+    "WORKOS_COOKIE_MAX_AGE": "28800"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true
+    }
+  }
+}

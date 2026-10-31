@@ -14,12 +14,51 @@ export class AuthConfigurationError extends Error {
 
 type AuthEnvironment = Record<string, string | undefined>;
 
+export class WorkosEmailNotAllowedError extends Error {
+  constructor() {
+    super("WorkOS identity is not allowed in staging.");
+    this.name = "WorkosEmailNotAllowedError";
+  }
+}
+
 function required(environment: AuthEnvironment, name: string): string {
   const value = environment[name]?.trim();
   if (!value) {
     throw new AuthConfigurationError();
   }
   return value;
+}
+
+function workosStagingAllowedEmails(environment: AuthEnvironment): Set<string> {
+  const values = required(environment, "WORKOS_STAGING_ALLOWED_EMAILS")
+    .split(",")
+    .map((value) => value.trim().toLowerCase());
+  const unique = new Set(values);
+
+  if (
+    values.length !== 2 ||
+    unique.size !== 2 ||
+    values.some(
+      (value) =>
+        !value ||
+        value.length > 254 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    )
+  ) {
+    throw new AuthConfigurationError();
+  }
+
+  return unique;
+}
+
+export function assertWorkosStagingEmailAllowed(
+  verifiedEmail: string,
+  environment: AuthEnvironment,
+): void {
+  const normalized = verifiedEmail.trim().toLowerCase();
+  if (!workosStagingAllowedEmails(environment).has(normalized)) {
+    throw new WorkosEmailNotAllowedError();
+  }
 }
 
 export function getAuthMode(environment: AuthEnvironment): AuthMode {
@@ -45,6 +84,7 @@ export function validateWorkosConfiguration(
   const cookiePassword = required(environment, "WORKOS_COOKIE_PASSWORD");
   const redirectUriValue = required(environment, "NEXT_PUBLIC_WORKOS_REDIRECT_URI");
   const issuerValue = required(environment, "WORKOS_ISSUER");
+  workosStagingAllowedEmails(environment);
 
   if (cookiePassword.length < 32) {
     throw new AuthConfigurationError();

@@ -10,12 +10,14 @@ import {
 } from "../../../server/auth/public-auth-http.ts";
 import { verifiedAuthContextFromWorkosUser } from "../../../server/auth/workos-auth-context.ts";
 import { mayProvisionWorkosIdentity } from "../../../server/auth/registration.ts";
+import { assertWorkosStagingEmailAllowed } from "../../../server/auth/auth-mode.ts";
 
 const workosCallback = handleAuth({
   returnPathname: "/app",
   onSuccess: async ({ state, user }) => {
     try {
       const authContext = verifiedAuthContextFromWorkosUser(user);
+      assertWorkosStagingEmailAllowed(authContext.verifiedEmail, process.env);
       const database = await getFamekoDatabase();
       const existingIdentity = await new IdentityRepository(database).findAuthIdentity(
         authContext.provider,

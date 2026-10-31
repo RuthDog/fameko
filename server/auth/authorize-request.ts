@@ -2,6 +2,8 @@ import { AccessTokenError, verifyAccessToken } from "./access-token.ts";
 import { verifiedAuthContextFromAccessClaims } from "./access-auth-context.ts";
 import {
   AuthConfigurationError,
+  WorkosEmailNotAllowedError,
+  assertWorkosStagingEmailAllowed,
   cloudflareAccessAuthMode,
   getAuthMode,
   validateCloudflareAccessConfiguration,
@@ -79,8 +81,9 @@ export async function authorizeRequest(
         return { code: "token_missing", ok: false };
       }
 
-      const database = options.database ?? (await getFamekoDatabase());
       const authContext = verifiedAuthContextFromWorkosUser(user);
+      assertWorkosStagingEmailAllowed(authContext.verifiedEmail, environment);
+      const database = options.database ?? (await getFamekoDatabase());
       const context = await resolveAuthorizedIdentity(
         new IdentityRepository(database),
         authContext,
@@ -92,6 +95,9 @@ export async function authorizeRequest(
       }
       if (error instanceof IdentityAuthorizationError) {
         return { code: error.code, ok: false };
+      }
+      if (error instanceof WorkosEmailNotAllowedError) {
+        return { code: "identity_missing", ok: false };
       }
       if (error instanceof DatabaseUnavailableError) {
         return { code: "database_unavailable", ok: false };

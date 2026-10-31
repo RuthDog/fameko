@@ -16,6 +16,7 @@ const environment = {
   WORKOS_CLIENT_ID: "client_test",
   WORKOS_COOKIE_PASSWORD: "x".repeat(32),
   WORKOS_ISSUER: "https://api.workos.com/",
+  WORKOS_STAGING_ALLOWED_EMAILS: "adult@example.test,second-adult@example.test",
 };
 
 async function createDatabase() {
@@ -94,7 +95,7 @@ test("ordinary WorkOS GET cannot provision an unknown subject", async () => {
         database,
         environment,
         workosUserResolver: async () => ({
-          email: "unknown@example.test",
+          email: "second-adult@example.test",
           emailVerified: true,
           id: "unknown-workos-user",
         }),
@@ -111,6 +112,32 @@ test("ordinary WorkOS GET cannot provision an unknown subject", async () => {
   } finally {
     await miniflare.dispose();
   }
+});
+
+test("a verified email outside the staging allowlist is rejected before D1 access", async () => {
+  let databaseTouched = false;
+  const database = new Proxy({} as D1Database, {
+    get() {
+      databaseTouched = true;
+      throw new Error("D1 must not be touched for a denied identity.");
+    },
+  });
+
+  const unauthorized = await authorizeRequest(
+    new Request("https://auth-staging.example.test/app"),
+    {
+      database,
+      environment,
+      workosUserResolver: async () => ({
+        email: "not-allowed@example.test",
+        emailVerified: true,
+        id: "disallowed-workos-user",
+      }),
+    },
+  );
+
+  assert.deepEqual(unauthorized, { code: "identity_missing", ok: false });
+  assert.equal(databaseTouched, false);
 });
 
 test("missing, unverified and misconfigured WorkOS sessions fail closed", async () => {
