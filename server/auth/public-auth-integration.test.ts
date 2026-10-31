@@ -70,7 +70,7 @@ test("new account writes exist only in the verified callback path", async () => 
   assert.match(startSignUp, /getSignUpUrl/);
   assert.match(startSignUp, /continueWorkosSignUp/);
   assert.match(signUpHandler, /issueRegistrationAttestation/);
-  assert.match(signUpHandler, /inspectSameOriginFormRequest/);
+  assert.match(signUpHandler, /isSameOriginFormRequest/);
   assert.match(signUpHandler, /\/auth\/start-sign-up/);
   assert.match(signIn, /getSignInUrl/);
   assert.doesNotMatch(signIn, /getSignUpUrl|acceptWorkosSignUp/);
@@ -78,7 +78,7 @@ test("new account writes exist only in the verified callback path", async () => 
 
 test("adult confirmation redirects only to an internal GET before WorkOS starts", async () => {
   const response = await acceptWorkosSignUp(
-    new Request("https://auth-staging.example.test/sign-up", {
+    new Request("https://internal-worker.example.test/sign-up", {
       body: "adult-confirmation=confirmed",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -107,7 +107,7 @@ test("adult confirmation redirects only to an internal GET before WorkOS starts"
 
 test("internal GET consumes issued attestation and starts a callback-bound WorkOS flow", async () => {
   const post = await acceptWorkosSignUp(
-    new Request("https://auth-staging.example.test/sign-up", {
+    new Request("https://internal-worker.example.test/sign-up", {
       body: "adult-confirmation=confirmed",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -125,7 +125,7 @@ test("internal GET consumes issued attestation and starts a callback-bound WorkO
 
   let receivedOptions: { returnTo: string; state: string } | undefined;
   const response = await continueWorkosSignUp(
-    new Request("https://auth-staging.example.test/auth/start-sign-up", {
+    new Request("https://internal-worker.example.test/auth/start-sign-up", {
       headers: {
         Accept: "text/html,application/xhtml+xml",
         Cookie: `${registrationAttestationCookieName}=${issuedToken}`,
@@ -209,47 +209,6 @@ test("internal sign-up start fails closed without a valid document-navigation at
     async () => "https://api.workos.com/should-not-run",
   );
   assert.equal(prefetch.status, 404);
-});
-
-test("sign-up diagnostics contain only structured request facts and fixed status codes", async () => {
-  const lines: string[] = [];
-  const originalInfo = console.info;
-  console.info = (...values: unknown[]) => lines.push(values.join(" "));
-  try {
-    const response = await acceptWorkosSignUp(
-      new Request("https://auth-staging.example.test/sign-up?private=query", {
-        body: "adult-confirmation=confirmed&email=private%40example.test",
-        headers: {
-          Accept: "text/html",
-          "Content-Type": "application/x-www-form-urlencoded",
-          Cookie: "session=private-cookie",
-          Origin: "https://attacker.example/private",
-          "Sec-Fetch-Site": "cross-site",
-        },
-        method: "POST",
-      }),
-      environment,
-    );
-    assert.equal(response.status, 404);
-  } finally {
-    console.info = originalInfo;
-  }
-
-  assert.equal(lines.length, 2);
-  const events = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
-  assert.deepEqual(
-    events.map((event) => event.diagnostic_event),
-    ["signup_post_received", "csrf_rejected"],
-  );
-  assert.ok(events.every((event) => event.response_status === 404));
-  assert.ok(events.every((event) => event.origin_present === true));
-  assert.ok(events.every((event) => event.origin_matches === false));
-  assert.ok(events.every((event) => event.sec_fetch_site === "cross-site"));
-  assert.ok(events.every((event) => event.internal_reason === "csrf_origin_mismatch"));
-  assert.ok(events.every((event) => event.route === "/sign-up"));
-  assert.ok(events.every((event) => event.correlation_id === events[0].correlation_id));
-  const serialized = JSON.stringify(events);
-  assert.doesNotMatch(serialized, /private|attacker|example\.test|query/iu);
 });
 
 test("logout cookie mutation stays in a Server Action with all three UX choices", async () => {

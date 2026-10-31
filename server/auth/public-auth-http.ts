@@ -6,46 +6,32 @@ import {
 } from "./auth-mode.ts";
 
 export type PublicAuthGate =
-  | { ok: true }
-  | {
-      ok: false;
-      reason: "public_auth_configuration" | "public_auth_mode";
-      status: 404 | 503;
-    };
-
-export type SameOriginFormRequestResult =
-  | { ok: true }
-  | {
-      ok: false;
-      reason:
-        | "csrf_content_type"
-        | "csrf_method"
-        | "csrf_missing_origin"
-        | "csrf_origin_mismatch";
-    };
+  | { ok: true; publicOrigin: string }
+  | { ok: false; status: 404 | 503 };
 
 export function publicWorkosAuthGate(
   environment: Record<string, string | undefined>,
 ): PublicAuthGate {
   try {
     if (getAuthMode(environment) !== workosStagingAuthMode) {
-      return { ok: false, reason: "public_auth_mode", status: 404 };
+      return { ok: false, status: 404 };
     }
-    validateWorkosConfiguration(environment);
-    return { ok: true };
+    const { publicOrigin } = validateWorkosConfiguration(environment);
+    return { ok: true, publicOrigin };
   } catch (error) {
     if (error instanceof AuthConfigurationError) {
-      return { ok: false, reason: "public_auth_configuration", status: 503 };
+      return { ok: false, status: 503 };
     }
-    return { ok: false, reason: "public_auth_configuration", status: 503 };
+    return { ok: false, status: 503 };
   }
 }
 
-export function inspectSameOriginFormRequest(
+export function isSameOriginFormRequest(
   request: Request,
-): SameOriginFormRequestResult {
+  trustedPublicOrigin: string,
+): boolean {
   if (request.method !== "POST") {
-    return { ok: false, reason: "csrf_method" };
+    return false;
   }
 
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
@@ -53,24 +39,16 @@ export function inspectSameOriginFormRequest(
     !contentType.startsWith("application/x-www-form-urlencoded") &&
     !contentType.startsWith("multipart/form-data")
   ) {
-    return { ok: false, reason: "csrf_content_type" };
+    return false;
   }
 
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
   if (origin) {
-    return origin === new URL(request.url).origin
-      ? { ok: true }
-      : { ok: false, reason: "csrf_origin_mismatch" };
+    return origin === trustedPublicOrigin && fetchSite !== "cross-site";
   }
 
-  return fetchSite === "same-origin"
-    ? { ok: true }
-    : { ok: false, reason: "csrf_missing_origin" };
-}
-
-export function isSameOriginFormRequest(request: Request): boolean {
-  return inspectSameOriginFormRequest(request).ok;
+  return fetchSite === "same-origin";
 }
 
 export function publicAuthUnavailableResponse(status: 404 | 503): Response {

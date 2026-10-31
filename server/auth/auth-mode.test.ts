@@ -19,6 +19,7 @@ const workosEnvironment = {
   WORKOS_ISSUER: "https://api.workos.com/",
   WORKOS_STAGING_ALLOWED_EMAILS: "allowed-a@example.test,allowed-b@example.test",
 };
+const trustedPublicOrigin = "https://auth-staging.example.test";
 
 test("auth mode is explicit and unknown or missing values fail closed", () => {
   assert.equal(
@@ -32,6 +33,7 @@ test("auth mode is explicit and unknown or missing values fail closed", () => {
 
 test("WorkOS mode requires complete secrets and a safe callback URL", () => {
   assert.deepEqual(validateWorkosConfiguration(workosEnvironment), {
+    publicOrigin: trustedPublicOrigin,
     redirectUri: "https://auth-staging.example.test/auth/callback",
   });
   assert.throws(
@@ -62,64 +64,100 @@ test("WorkOS mode requires complete secrets and a safe callback URL", () => {
       }),
     AuthConfigurationError,
   );
+  assert.throws(
+    () =>
+      validateWorkosConfiguration({
+        ...workosEnvironment,
+        NEXT_PUBLIC_WORKOS_REDIRECT_URI:
+          "https://auth-staging.example.test/wrong-callback",
+      }),
+    AuthConfigurationError,
+  );
+  assert.throws(
+    () =>
+      validateWorkosConfiguration({
+        ...workosEnvironment,
+        NEXT_PUBLIC_WORKOS_REDIRECT_URI:
+          "https://auth-staging.example.test/auth/callback?untrusted=1",
+      }),
+    AuthConfigurationError,
+  );
 });
 
 test("public WorkOS routes stay hidden in legacy mode and fail closed on missing secrets", () => {
   assert.deepEqual(
     publicWorkosAuthGate({ FAMEKO_AUTH_MODE: cloudflareAccessAuthMode }),
-    { ok: false, reason: "public_auth_mode", status: 404 },
+    { ok: false, status: 404 },
   );
   assert.deepEqual(publicWorkosAuthGate({ FAMEKO_AUTH_MODE: workosStagingAuthMode }), {
     ok: false,
-    reason: "public_auth_configuration",
     status: 503,
   });
-  assert.deepEqual(publicWorkosAuthGate(workosEnvironment), { ok: true });
+  assert.deepEqual(
+    publicWorkosAuthGate({
+      ...workosEnvironment,
+      NEXT_PUBLIC_WORKOS_REDIRECT_URI:
+        "https://auth-staging.example.test/not-the-callback",
+    }),
+    { ok: false, status: 503 },
+  );
+  assert.deepEqual(publicWorkosAuthGate(workosEnvironment), {
+    ok: true,
+    publicOrigin: trustedPublicOrigin,
+  });
 });
 
-test("registration POST uses exact Origin with same-origin Fetch Metadata as fallback", () => {
+test("registration POST trusts configured public Origin instead of runtime or proxy hosts", () => {
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Origin: "https://auth-staging.example.test",
+          Host: "attacker.example",
+          Origin: trustedPublicOrigin,
           "Sec-Fetch-Site": "same-origin",
+          "X-Forwarded-Host": "attacker.example",
         },
       }),
+      trustedPublicOrigin,
     ),
     true,
   );
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Origin: "https://auth-staging.example.test",
+          Origin: trustedPublicOrigin,
           "Sec-Fetch-Site": "none",
         },
       }),
+      trustedPublicOrigin,
     ),
     true,
   );
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Origin: "https://auth-staging.example.test",
+          Origin: trustedPublicOrigin,
           "Sec-Fetch-Site": "same-site",
         },
       }),
+      trustedPublicOrigin,
     ),
     true,
   );
+});
+
+test("registration POST rejects false Origin, cross-site and unsafe headerless requests", () => {
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -128,12 +166,13 @@ test("registration POST uses exact Origin with same-origin Fetch Metadata as fal
           "Sec-Fetch-Site": "same-origin",
         },
       }),
+      trustedPublicOrigin,
     ),
     true,
   );
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -141,29 +180,46 @@ test("registration POST uses exact Origin with same-origin Fetch Metadata as fal
           "Sec-Fetch-Site": "same-origin",
         },
       }),
+      trustedPublicOrigin,
     ),
     false,
   );
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Origin: trustedPublicOrigin,
+          "Sec-Fetch-Site": "cross-site",
+        },
+      }),
+      trustedPublicOrigin,
+    ),
+    false,
+  );
+  assert.equal(
+    isSameOriginFormRequest(
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           "Sec-Fetch-Site": "none",
         },
       }),
+      trustedPublicOrigin,
     ),
     false,
   );
   assert.equal(
     isSameOriginFormRequest(
-      new Request("https://auth-staging.example.test/sign-up", {
+      new Request("https://internal-worker.invalid/sign-up", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       }),
+      trustedPublicOrigin,
     ),
     false,
   );

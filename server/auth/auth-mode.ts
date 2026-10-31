@@ -78,7 +78,7 @@ export function validateCloudflareAccessConfiguration(
 
 export function validateWorkosConfiguration(
   environment: AuthEnvironment,
-): { redirectUri: string } {
+): { publicOrigin: string; redirectUri: string } {
   required(environment, "WORKOS_CLIENT_ID");
   required(environment, "WORKOS_API_KEY");
   const cookiePassword = required(environment, "WORKOS_COOKIE_PASSWORD");
@@ -125,5 +125,8 @@ export function validateWorkosConfiguration(
     throw new AuthConfigurationError();
   }
 
-  return { redirectUri: redirectUri.toString() };
+  return {
+    publicOrigin: redirectUri.origin,
+    redirectUri: redirectUri.toString(),
+  };
 }
