@@ -13,7 +13,7 @@ import { verifiedAuthContextFromWorkosUser } from "../../../server/auth/workos-a
 import {
   mayProvisionWorkosIdentity,
   registrationAttestationCookieName,
-  verifyRegistrationCallbackAttestation,
+  validateRegistrationCallbackAttestation,
 } from "../../../server/auth/registration.ts";
 import { assertWorkosStagingEmailAllowed } from "../../../server/auth/auth-mode.ts";
 import {
@@ -50,23 +50,30 @@ const workosCallback = handleAuth({
       );
       step = "callback_attestation";
       const cookieStore = await cookies();
-      const callbackAttestationValid = await verifyRegistrationCallbackAttestation(
+      const attestationValidation = await validateRegistrationCallbackAttestation(
         state,
         cookieStore.get(registrationAttestationCookieName)?.value,
         process.env,
       );
-      if (!mayProvisionWorkosIdentity(Boolean(existingIdentity), callbackAttestationValid)) {
-        throw new Error("Registration attestation is missing.");
+      if (!mayProvisionWorkosIdentity(
+        Boolean(existingIdentity),
+        attestationValidation === "valid",
+      )) {
+        if (attestationValidation === "valid") {
+          throw new AuthFlowFailure("callback_attestation");
+        }
+        throw new AuthFlowFailure("callback_attestation", attestationValidation);
       }
       step = "callback_provisioning";
       await provisionWorkosAccountAfterVerifiedCallback(
         database,
         authContext,
       );
+      step = "callback_cleanup";
       await clearRegistrationAttestation();
-    } catch {
+    } catch (error) {
       await clearRegistrationAttestation();
-      throw new AuthFlowFailure(step);
+      throw error instanceof AuthFlowFailure ? error : new AuthFlowFailure(step);
     }
   },
   onError: async ({ error, request }) => {

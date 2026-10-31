@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { AuthFlowFailure, reportAuthFlowFailure } from "./auth-diagnostics.ts";
 import {
   issueRegistrationAttestation,
   mayProvisionWorkosIdentity,
@@ -10,6 +11,7 @@ import {
   registrationAttestationSetCookie,
   registrationAttestationTtlSeconds,
   startRegistrationAttestation,
+  validateRegistrationCallbackAttestation,
   verifyRegistrationCallbackAttestation,
 } from "./registration.ts";
 
@@ -79,6 +81,102 @@ test("registration attestation is tamper-evident, secret-bound, and expires afte
     ),
     null,
   );
+});
+
+test("callback attestation reports a bounded fail-closed validation reason", async () => {
+  const issued = await issueRegistrationAttestation(environment, { nonce, now });
+  const started = await startRegistrationAttestation(issued.token, environment, now);
+  assert.ok(started);
+
+  assert.equal(
+    await validateRegistrationCallbackAttestation(undefined, undefined, environment, now),
+    "missing",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(started.token, undefined, environment, now),
+    "missing",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      started.token,
+      undefined,
+      environment,
+      now + registrationAttestationTtlSeconds * 1000,
+    ),
+    "expired",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      started.token,
+      issued.token,
+      environment,
+      now,
+    ),
+    "state_mismatch",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      issued.token,
+      issued.token,
+      environment,
+      now,
+    ),
+    "wrong_phase",
+  );
+
+  const tampered = `${started.token.slice(0, -1)}${started.token.endsWith("a") ? "b" : "a"}`;
+  assert.equal(
+    await validateRegistrationCallbackAttestation(tampered, tampered, environment, now),
+    "invalid_signature",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(tampered, undefined, environment, now),
+    "invalid_signature",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      started.token,
+      started.token,
+      { WORKOS_COOKIE_PASSWORD: "too-short" },
+      now,
+    ),
+    "configuration_error",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      started.token,
+      started.token,
+      environment,
+      now,
+    ),
+    "valid",
+  );
+});
+
+test("callback diagnostics emit only the bounded attestation reason", () => {
+  const messages: string[] = [];
+  const originalError = console.error;
+  console.error = (message?: unknown) => {
+    messages.push(String(message));
+  };
+  try {
+    reportAuthFlowFailure(new AuthFlowFailure("callback_attestation", "expired"));
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(messages.length, 1);
+  const event = JSON.parse(messages[0]) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(event).sort(), [
+    "correlationId",
+    "event",
+    "reason",
+    "step",
+  ]);
+  assert.equal(event.event, "fameko_auth_failure");
+  assert.equal(event.reason, "expired");
+  assert.equal(event.step, "callback_attestation");
+  assert.match(String(event.correlationId), /^[0-9a-f-]{36}$/iu);
 });
 
 test("registration cookie is host-only, short-lived, secure, HttpOnly, and SameSite Lax", async () => {

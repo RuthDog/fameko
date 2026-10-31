@@ -129,7 +129,7 @@ test("new account writes exist only in the verified callback path", async () => 
   assert.match(callback, /onSuccess:\s*async/);
   assert.match(callback, /provisionWorkosAccountAfterVerifiedCallback/);
   assert.match(callback, /mayProvisionWorkosIdentity/);
-  assert.match(callback, /verifyRegistrationCallbackAttestation/);
+  assert.match(callback, /validateRegistrationCallbackAttestation/);
   assert.match(callback, /assertWorkosStagingEmailAllowed/);
   assert.ok(
     callback.indexOf("assertWorkosStagingEmailAllowed(authContext") <

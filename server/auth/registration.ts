@@ -5,6 +5,16 @@ export const registrationAttestationTtlSeconds = 5 * 60;
 type AuthEnvironment = Record<string, string | undefined>;
 type RegistrationPhase = "issued" | "started";
 
+export type RegistrationAttestationValidationResult =
+  | "configuration_error"
+  | "expired"
+  | "invalid_payload"
+  | "invalid_signature"
+  | "missing"
+  | "state_mismatch"
+  | "valid"
+  | "wrong_phase";
+
 type RegistrationAttestationPayload = {
   expiresAt: number;
   issuedAt: number;
@@ -88,62 +98,77 @@ async function signPayload(
   return `${encodedPayload}.${toBase64Url(new Uint8Array(signature))}`;
 }
 
-function isPayload(
-  value: unknown,
-  phase: RegistrationPhase,
-  now: number,
-): value is RegistrationAttestationPayload {
+function isPayloadShape(value: unknown): value is RegistrationAttestationPayload {
   if (!value || typeof value !== "object") {
     return false;
   }
   const payload = value as Partial<RegistrationAttestationPayload>;
   return payload.version === 1
     && payload.purpose === adultRegistrationAttestation
-    && payload.phase === phase
+    && (payload.phase === "issued" || payload.phase === "started")
     && typeof payload.nonce === "string"
     && /^[0-9a-f-]{36}$/iu.test(payload.nonce)
     && typeof payload.issuedAt === "number"
     && Number.isInteger(payload.issuedAt)
     && typeof payload.expiresAt === "number"
     && Number.isInteger(payload.expiresAt)
-    && payload.issuedAt <= now + clockSkewSeconds
-    && payload.expiresAt > now
     && payload.expiresAt - payload.issuedAt === registrationAttestationTtlSeconds;
 }
+
+type TokenVerification =
+  | { payload: RegistrationAttestationPayload; result: "valid" }
+  | { result: Exclude<RegistrationAttestationValidationResult, "state_mismatch" | "valid"> };
 
 async function verifyToken(
   token: string | undefined,
   phase: RegistrationPhase,
   environment: AuthEnvironment,
   now = epochSeconds(),
-): Promise<RegistrationAttestationPayload | null> {
-  if (!token || token.length > maximumTokenLength) {
-    return null;
+): Promise<TokenVerification> {
+  if (!token) {
+    return { result: "missing" };
+  }
+  if (token.length > maximumTokenLength) {
+    return { result: "invalid_payload" };
   }
   const parts = token.split(".");
   if (parts.length !== 2) {
-    return null;
+    return { result: "invalid_signature" };
   }
   const [encodedPayload, encodedSignature] = parts;
   const signature = fromBase64Url(encodedSignature);
   const payloadBytes = fromBase64Url(encodedPayload);
   if (!signature || !payloadBytes) {
-    return null;
+    return { result: "invalid_signature" };
   }
-  const validSignature = await crypto.subtle.verify(
-    "HMAC",
-    await signingKey(environment),
-    Uint8Array.from(signature),
-    encoder.encode(`${signingContext}.${encodedPayload}`),
-  );
+  let validSignature: boolean;
+  try {
+    validSignature = await crypto.subtle.verify(
+      "HMAC",
+      await signingKey(environment),
+      Uint8Array.from(signature),
+      encoder.encode(`${signingContext}.${encodedPayload}`),
+    );
+  } catch {
+    return { result: "configuration_error" };
+  }
   if (!validSignature) {
-    return null;
+    return { result: "invalid_signature" };
   }
   try {
     const payload: unknown = JSON.parse(new TextDecoder().decode(payloadBytes));
-    return isPayload(payload, phase, now) ? payload : null;
+    if (!isPayloadShape(payload) || payload.issuedAt > now + clockSkewSeconds) {
+      return { result: "invalid_payload" };
+    }
+    if (payload.phase !== phase) {
+      return { result: "wrong_phase" };
+    }
+    if (payload.expiresAt <= now) {
+      return { result: "expired" };
+    }
+    return { payload, result: "valid" };
   } catch {
-    return null;
+    return { result: "invalid_payload" };
   }
 }
 
@@ -169,11 +194,40 @@ export async function startRegistrationAttestation(
   now = Date.now(),
 ): Promise<{ expiresAt: number; token: string } | null> {
   const verified = await verifyToken(token, "issued", environment, epochSeconds(now));
-  if (!verified) {
+  if (verified.result !== "valid") {
     return null;
   }
-  const started = { ...verified, phase: "started" as const };
+  const started = { ...verified.payload, phase: "started" as const };
   return { expiresAt: started.expiresAt, token: await signPayload(started, environment) };
+}
+
+export async function validateRegistrationCallbackAttestation(
+  callbackState: string | undefined,
+  cookieValue: string | undefined,
+  environment: AuthEnvironment,
+  now = Date.now(),
+): Promise<RegistrationAttestationValidationResult> {
+  if (!callbackState) {
+    return "missing";
+  }
+  if (!cookieValue) {
+    const stateValidation = await verifyToken(
+      callbackState,
+      "started",
+      environment,
+      epochSeconds(now),
+    );
+    return stateValidation.result === "valid" ? "missing" : stateValidation.result;
+  }
+  if (callbackState !== cookieValue) {
+    return "state_mismatch";
+  }
+  return (await verifyToken(
+    callbackState,
+    "started",
+    environment,
+    epochSeconds(now),
+  )).result;
 }
 
 export async function verifyRegistrationCallbackAttestation(
@@ -182,12 +236,12 @@ export async function verifyRegistrationCallbackAttestation(
   environment: AuthEnvironment,
   now = Date.now(),
 ): Promise<boolean> {
-  if (!callbackState || !cookieValue || callbackState !== cookieValue) {
-    return false;
-  }
-  return Boolean(
-    await verifyToken(callbackState, "started", environment, epochSeconds(now)),
-  );
+  return await validateRegistrationCallbackAttestation(
+    callbackState,
+    cookieValue,
+    environment,
+    now,
+  ) === "valid";
 }
 
 export function readRegistrationAttestationCookie(request: Request): string | undefined {
