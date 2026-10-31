@@ -16,6 +16,10 @@ import {
   authErrorUrl,
   reportAuthFlowFailure,
 } from "./auth-diagnostics.ts";
+import {
+  currentPrivacyDocumentVersion,
+  currentTermsDocumentVersion,
+} from "../legal/legal-versions.ts";
 
 type WorkosAuthorizationUrlFactory = (options: {
   returnTo: string;
@@ -67,6 +71,14 @@ export async function acceptWorkosSignUp(
   if (form.get("adult-confirmation") !== "confirmed") {
     return redirect(
       new URL("/sign-up?error=adult-required", gate.publicOrigin).toString(),
+    );
+  }
+  if (
+    form.get("terms-confirmation") !== currentTermsDocumentVersion
+    || form.get("privacy-version") !== currentPrivacyDocumentVersion
+  ) {
+    return redirect(
+      new URL("/sign-up?error=terms-required", gate.publicOrigin).toString(),
     );
   }
   const intent = registrationIntent(form);

@@ -14,6 +14,10 @@ import {
   validateRegistrationCallbackAttestation,
   verifyRegistrationCallbackAttestation,
 } from "./registration.ts";
+import {
+  currentPrivacyDocumentVersion,
+  currentTermsDocumentVersion,
+} from "../legal/legal-versions.ts";
 
 const environment = {
   WORKOS_COOKIE_PASSWORD: "test-cookie-password-that-is-at-least-32-chars",
@@ -24,6 +28,12 @@ const nonce = "018f85c8-9c77-7d8e-9a1c-0123456789ab";
 test("adult registration attestation rotates from issued to callback-bound started state", async () => {
   const issued = await issueRegistrationAttestation(environment, "create", { nonce, now });
   assert.equal(issued.intent, "create");
+  const payload = JSON.parse(
+    Buffer.from(issued.token.split(".", 1)[0], "base64url").toString("utf8"),
+  ) as Record<string, unknown>;
+  assert.equal(payload.privacyVersion, currentPrivacyDocumentVersion);
+  assert.equal(payload.termsVersion, currentTermsDocumentVersion);
+  assert.equal(payload.version, 3);
   const issuedCookie = registrationAttestationSetCookie(issued.token, issued.expiresAt, now);
   const request = new Request("https://auth-staging.example.test/auth/start-sign-up", {
     headers: { Cookie: issuedCookie.split(";", 1)[0] },

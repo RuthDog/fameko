@@ -1,55 +1,31 @@
-"use client";
+import type { ReactNode } from "react";
 
-import { useState, type ReactNode } from "react";
-
-import {
-  buildLogoDevUrl,
-  resolveBrand,
-} from "../../shared/brand/brand-recognition.ts";
-
-const logoDevPublishableKey =
-  process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY;
+import { resolveBrand } from "../../shared/brand/brand-recognition.ts";
 
 export function BrandLogo({
   className = "",
   displayName,
-  domain,
   fallback = null,
   size = 20,
 }: {
   className?: string;
   displayName: string;
-  domain: string;
   fallback?: ReactNode;
   size?: number;
 }) {
-  const src = buildLogoDevUrl(domain, logoDevPublishableKey, size);
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-
-  if (!src || failedSrc === src) {
+  if (fallback !== null) {
     return fallback;
   }
 
+  const initial = displayName.trim().slice(0, 1).toLocaleUpperCase("sv-SE") || "•";
+
   return (
     <span
-      className={`grid shrink-0 place-items-center overflow-hidden rounded-[4px] ${className}`}
+      aria-hidden="true"
+      className={`grid shrink-0 place-items-center rounded-[4px] bg-stone-200 text-[0.65em] font-bold text-stone-600 ${className}`}
       style={{ height: size, width: size }}
     >
-      {/* Logo.dev is a deliberately restricted logo CDN; a plain image keeps
-          failures local to this enrichment instead of involving Next/Image. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        alt={`${displayName}-logotyp`}
-        className="block h-full w-full object-contain"
-        decoding="async"
-        draggable={false}
-        height={size}
-        loading="lazy"
-        onError={() => setFailedSrc(src)}
-        referrerPolicy="origin"
-        src={src}
-        width={size}
-      />
+      {initial}
     </span>
   );
 }
@@ -75,7 +51,6 @@ export function RecognizedBrandLogo({
     <BrandLogo
       className={className}
       displayName={brand.displayName}
-      domain={brand.domain}
       fallback={fallback}
       size={size}
     />

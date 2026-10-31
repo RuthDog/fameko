@@ -54,25 +54,13 @@ test("add expense keeps separate fields while table rendering uses one text row"
   assert.match(workspaceSource, /wrap \? "break-words whitespace-normal" : "truncate"/);
 });
 
-test("missing configuration and failed Logo.dev images have silent fallbacks", () => {
-  assert.match(logoSource, /if \(!src \|\| failedSrc === src\) \{\s+return fallback;/);
+test("recognized brands use only a local neutral fallback", () => {
+  assert.match(logoSource, /if \(fallback !== null\) \{\s+return fallback;/);
   assert.match(logoSource, /fallback = null/);
-  assert.match(logoSource, /onError=\{\(\) => setFailedSrc\(src\)\}/);
-  assert.doesNotMatch(logoSource, /alt=""/);
+  assert.match(logoSource, /bg-stone-200/);
+  assert.doesNotMatch(logoSource, /<img|https?:\/\/|process\.env/);
 });
 
-test("the browser receives only the configured domain through Logo.dev", () => {
-  assert.match(
-    logoSource,
-    /buildLogoDevUrl\(domain, logoDevPublishableKey, size\)/,
-  );
-  assert.doesNotMatch(logoSource, /PlanningData|amount|income|expense/);
-});
-
-test("Next builds expose only the publishable Logo.dev key from .dev.vars", () => {
-  assert.match(nextConfigSource, /Object\.hasOwn\(process\.env, logoDevVariableName\)/);
-  assert.match(nextConfigSource, /readFileSync\("\.dev\.vars", "utf8"\)/);
-  assert.match(nextConfigSource, /normalized\?\.startsWith\("pk_"\)/);
-  assert.doesNotMatch(nextConfigSource, /process\.env\.NODE_ENV/);
-  assert.doesNotMatch(nextConfigSource, /CF_ACCESS_(?:AUD|TEAM_DOMAIN)/);
+test("Next builds no longer expose a Logo.dev key", () => {
+  assert.doesNotMatch(nextConfigSource, /LOGO_DEV|logoDev|readFileSync/);
 });

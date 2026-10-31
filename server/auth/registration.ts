@@ -1,3 +1,8 @@
+import {
+  currentPrivacyDocumentVersion,
+  currentTermsDocumentVersion,
+} from "../legal/legal-versions.ts";
+
 export const adultRegistrationAttestation = "adult-confirmed-v1";
 export const registrationAttestationCookieName = "__Host-fameko-sign-up";
 export const registrationAttestationTtlSeconds = 5 * 60;
@@ -23,8 +28,10 @@ type RegistrationAttestationPayload = {
   issuedAt: number;
   nonce: string;
   phase: RegistrationPhase;
+  privacyVersion: typeof currentPrivacyDocumentVersion;
   purpose: typeof adultRegistrationAttestation;
-  version: 2;
+  termsVersion: typeof currentTermsDocumentVersion;
+  version: 3;
 };
 
 type AttestationOptions = {
@@ -106,8 +113,10 @@ function isPayloadShape(value: unknown): value is RegistrationAttestationPayload
     return false;
   }
   const payload = value as Partial<RegistrationAttestationPayload>;
-  return payload.version === 2
+  return payload.version === 3
     && payload.purpose === adultRegistrationAttestation
+    && payload.privacyVersion === currentPrivacyDocumentVersion
+    && payload.termsVersion === currentTermsDocumentVersion
     && (payload.phase === "issued" || payload.phase === "started")
     && (payload.intent === "create" || payload.intent === "recover")
     && typeof payload.nonce === "string"
@@ -188,8 +197,10 @@ export async function issueRegistrationAttestation(
     issuedAt,
     nonce: options.nonce ?? crypto.randomUUID(),
     phase: "issued",
+    privacyVersion: currentPrivacyDocumentVersion,
     purpose: adultRegistrationAttestation,
-    version: 2,
+    termsVersion: currentTermsDocumentVersion,
+    version: 3,
   };
   return {
     expiresAt: payload.expiresAt,

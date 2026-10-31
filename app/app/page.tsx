@@ -5369,13 +5369,6 @@ function ProductFooter() {
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:justify-end">
           <span>Version: Workspace 1.0</span>
-          <a
-            className="transition hover:text-stone-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700"
-            href="https://logo.dev"
-            rel="noreferrer"
-          >
-            Logos provided by Logo.dev
-          </a>
           <span>© 2026 Fameko</span>
         </div>
       </div>

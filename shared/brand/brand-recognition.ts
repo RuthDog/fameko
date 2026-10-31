@@ -123,30 +123,3 @@ export function resolveBrand(label: string): BrandResolution {
 
   return { recognized: false };
 }
-
-export function buildLogoDevUrl(
-  domain: string,
-  publishableKey: string | undefined,
-  size = 20,
-): string | null {
-  const normalizedDomain = domain.trim().toLocaleLowerCase("en-US");
-  const normalizedKey = publishableKey?.trim();
-
-  if (
-    !normalizedKey?.startsWith("pk_") ||
-    !/^[a-z0-9.-]+$/.test(normalizedDomain) ||
-    normalizedDomain.includes("..")
-  ) {
-    return null;
-  }
-
-  const normalizedSize = Math.min(80, Math.max(16, Math.round(size)));
-  const url = new URL(`https://img.logo.dev/${normalizedDomain}`);
-  url.searchParams.set("token", normalizedKey);
-  url.searchParams.set("size", String(normalizedSize));
-  url.searchParams.set("retina", "true");
-  url.searchParams.set("format", "png");
-  url.searchParams.set("theme", "light");
-  url.searchParams.set("fallback", "404");
-  return url.toString();
-}

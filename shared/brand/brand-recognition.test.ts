@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   brandLibrary,
-  buildLogoDevUrl,
   resolveBrand,
 } from "./brand-recognition.ts";
 import { seedPlanningDataV3 } from "../planning/seed-planning-data.ts";
@@ -52,16 +51,6 @@ test("unknown or uncertain labels stay unrecognized", () => {
   assert.deepEqual(resolveBrand("Min egen försäkring"), { recognized: false });
   assert.deepEqual(resolveBrand("Max matbudget"), { recognized: false });
   assert.deepEqual(resolveBrand(""), { recognized: false });
-});
-
-test("Logo.dev URLs accept only publishable keys and contain only the canonical domain", () => {
-  const url = buildLogoDevUrl("spotify.com", "pk_public-test", 20);
-  assert.ok(url);
-  assert.equal(url?.startsWith("https://img.logo.dev/spotify.com?"), true);
-  assert.equal(url?.includes("fallback=404"), true);
-  assert.equal(url?.includes("retina=true"), true);
-  assert.equal(buildLogoDevUrl("spotify.com", "sk_secret", 20), null);
-  assert.equal(buildLogoDevUrl("spotify.com/199kr-ola", "pk_public-test", 20), null);
 });
 
 test("Brand Resolver never changes PlanningData economics", () => {

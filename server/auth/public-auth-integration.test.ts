@@ -11,6 +11,10 @@ import {
 } from "./registration.ts";
 import { acceptWorkosSignUp, continueWorkosSignUp } from "./workos-sign-up.ts";
 import { completeWorkosSignOut } from "./workos-sign-out.ts";
+import {
+  currentPrivacyDocumentVersion,
+  currentTermsDocumentVersion,
+} from "../legal/legal-versions.ts";
 
 const middlewareUrl = new URL("../../middleware.ts", import.meta.url);
 const callbackUrl = new URL("../../app/auth/callback/route.ts", import.meta.url);
@@ -33,6 +37,15 @@ const environment = {
   WORKOS_STAGING_ALLOWED_EMAILS:
     "allowed-a@example.test,allowed-b@example.test",
 };
+
+function acceptedRegistrationBody(intent: "create" | "recover") {
+  return new URLSearchParams({
+    "adult-confirmation": "confirmed",
+    "privacy-version": currentPrivacyDocumentVersion,
+    "registration-intent": intent,
+    "terms-confirmation": currentTermsDocumentVersion,
+  });
+}
 
 function cookieValue(setCookie: string | null, name: string): string | undefined {
   if (!setCookie) {
@@ -77,6 +90,11 @@ test("registration document preserves Origin without leaking URL details", async
     );
     const document = await response.text();
     assert.match(document, /<form action="\/sign-up" method="post">/);
+    assert.match(document, /name="adult-confirmation" required/);
+    assert.match(document, /name="terms-confirmation" required/);
+    assert.match(document, /href="\/privacy"/);
+    assert.match(document, /href="\/terms"/);
+    assert.match(document, /inte ett generellt GDPR-samtycke/);
     assert.match(document, /name="registration-intent" type="submit" value="create"/);
     assert.match(document, /name="registration-intent" type="submit" value="recover"/);
   } finally {
@@ -93,7 +111,7 @@ test("registration document preserves Origin without leaking URL details", async
 test("registration rejects an opaque null Origin and accepts only the trusted Origin", async () => {
   const opaqueOrigin = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed&registration-intent=create",
+      body: acceptedRegistrationBody("create"),
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "null",
@@ -110,7 +128,7 @@ test("registration rejects an opaque null Origin and accepts only the trusted Or
 
   const trustedOrigin = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed&registration-intent=create",
+      body: acceptedRegistrationBody("create"),
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
@@ -173,7 +191,7 @@ test("new account writes exist only in the verified callback path", async () => 
 test("adult confirmation redirects only to an internal GET before WorkOS starts", async () => {
   const response = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed&registration-intent=create",
+      body: acceptedRegistrationBody("create"),
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
@@ -202,7 +220,11 @@ test("adult confirmation redirects only to an internal GET before WorkOS starts"
 
 test("registration intent is required and validated before an attestation is issued", async () => {
   for (const registrationIntent of [undefined, "unknown", "create&registration-intent=recover"]) {
-    const body = new URLSearchParams({ "adult-confirmation": "confirmed" });
+    const body = new URLSearchParams({
+      "adult-confirmation": "confirmed",
+      "privacy-version": currentPrivacyDocumentVersion,
+      "terms-confirmation": currentTermsDocumentVersion,
+    });
     if (registrationIntent) {
       for (const value of registrationIntent.split("&registration-intent=")) {
         body.append("registration-intent", value);
@@ -226,10 +248,53 @@ test("registration intent is required and validated before an attestation is iss
   }
 });
 
+test("registration requires the exact current terms and privacy document versions", async () => {
+  for (const body of [
+    new URLSearchParams({
+      "adult-confirmation": "confirmed",
+      "privacy-version": currentPrivacyDocumentVersion,
+      "registration-intent": "create",
+    }),
+    new URLSearchParams({
+      "adult-confirmation": "confirmed",
+      "privacy-version": "privacy-old",
+      "registration-intent": "create",
+      "terms-confirmation": currentTermsDocumentVersion,
+    }),
+    new URLSearchParams({
+      "adult-confirmation": "confirmed",
+      "privacy-version": currentPrivacyDocumentVersion,
+      "registration-intent": "create",
+      "terms-confirmation": "terms-old",
+    }),
+  ]) {
+    const response = await acceptWorkosSignUp(
+      new Request("https://internal-worker.example.test/sign-up", {
+        body,
+        headers: {
+          Origin: "https://auth-staging.example.test",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "same-origin",
+        },
+        method: "POST",
+      }),
+      environment,
+    );
+
+    assert.equal(response.status, 303);
+    assert.equal(
+      response.headers.get("location"),
+      "https://auth-staging.example.test/sign-up?error=terms-required",
+    );
+    assert.equal(response.headers.get("set-cookie"), null);
+  }
+});
+
 test("internal GET consumes issued attestation and starts a callback-bound WorkOS flow", async () => {
   const post = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed&registration-intent=create",
+      body: acceptedRegistrationBody("create"),
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
@@ -322,7 +387,7 @@ test("internal GET consumes issued attestation and starts a callback-bound WorkO
 test("recovery intent starts WorkOS sign-in with the signed callback attestation", async () => {
   const post = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed&registration-intent=recover",
+      body: acceptedRegistrationBody("recover"),
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
