@@ -1,16 +1,19 @@
-import { getSignUpUrl } from "@workos-inc/authkit-nextjs";
-
 import {
   publicAuthUnavailableResponse,
   publicWorkosAuthGate,
 } from "../../server/auth/public-auth-http.ts";
-import { startWorkosSignUp } from "../../server/auth/workos-sign-up.ts";
+import { acceptWorkosSignUp } from "../../server/auth/workos-sign-up.ts";
 
 function registrationPage(request: Request): Response {
   const showAdultError = new URL(request.url).searchParams.get("error") === "adult-required";
   const error = showAdultError
     ? '<p id="form-error" role="alert">Du måste bekräfta att du är minst 18 år.</p>'
     : "";
+  const showExpiredError = new URL(request.url).searchParams.get("error")
+    === "attestation-expired";
+  const registrationError = showExpiredError
+    ? '<p id="form-error" role="alert">Registreringen hann g&aring; ut. Bekr&auml;fta din &aring;lder och f&ouml;rs&ouml;k igen.</p>'
+    : error;
   const body = `<!doctype html>
 <html lang="sv">
   <head>
@@ -38,7 +41,7 @@ function registrationPage(request: Request): Response {
         <div class="brand">Fameko</div>
         <h1 id="registration-title">Skapa konto</h1>
         <p>Fameko är avsett för vuxna. Inloggningen fortsätter med e-post och engångskod hos vår inloggningsleverantör.</p>
-        ${error}
+        ${registrationError}
         <form action="/sign-up" method="post">
           <label><input name="adult-confirmation" required type="checkbox" value="confirmed" /><span>Jag bekräftar att jag är minst 18 år.</span></label>
           <button type="submit">Fortsätt med e-post</button>
@@ -52,7 +55,7 @@ function registrationPage(request: Request): Response {
   return new Response(body, {
     headers: {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com https://*.authkit.app; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
@@ -69,5 +72,5 @@ export function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return startWorkosSignUp(request, process.env, getSignUpUrl);
+  return acceptWorkosSignUp(request, process.env);
 }
