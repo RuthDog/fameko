@@ -7,28 +7,45 @@ import {
 
 export type PublicAuthGate =
   | { ok: true }
-  | { ok: false; status: 404 | 503 };
+  | {
+      ok: false;
+      reason: "public_auth_configuration" | "public_auth_mode";
+      status: 404 | 503;
+    };
+
+export type SameOriginFormRequestResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "csrf_content_type"
+        | "csrf_method"
+        | "csrf_missing_origin"
+        | "csrf_origin_mismatch";
+    };
 
 export function publicWorkosAuthGate(
   environment: Record<string, string | undefined>,
 ): PublicAuthGate {
   try {
     if (getAuthMode(environment) !== workosStagingAuthMode) {
-      return { ok: false, status: 404 };
+      return { ok: false, reason: "public_auth_mode", status: 404 };
     }
     validateWorkosConfiguration(environment);
     return { ok: true };
   } catch (error) {
     if (error instanceof AuthConfigurationError) {
-      return { ok: false, status: 503 };
+      return { ok: false, reason: "public_auth_configuration", status: 503 };
     }
-    return { ok: false, status: 503 };
+    return { ok: false, reason: "public_auth_configuration", status: 503 };
   }
 }
 
-export function isSameOriginFormRequest(request: Request): boolean {
+export function inspectSameOriginFormRequest(
+  request: Request,
+): SameOriginFormRequestResult {
   if (request.method !== "POST") {
-    return false;
+    return { ok: false, reason: "csrf_method" };
   }
 
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
@@ -36,16 +53,24 @@ export function isSameOriginFormRequest(request: Request): boolean {
     !contentType.startsWith("application/x-www-form-urlencoded") &&
     !contentType.startsWith("multipart/form-data")
   ) {
-    return false;
+    return { ok: false, reason: "csrf_content_type" };
   }
 
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
   if (origin) {
-    return origin === new URL(request.url).origin;
+    return origin === new URL(request.url).origin
+      ? { ok: true }
+      : { ok: false, reason: "csrf_origin_mismatch" };
   }
 
-  return fetchSite === "same-origin";
+  return fetchSite === "same-origin"
+    ? { ok: true }
+    : { ok: false, reason: "csrf_missing_origin" };
+}
+
+export function isSameOriginFormRequest(request: Request): boolean {
+  return inspectSameOriginFormRequest(request).ok;
 }
 
 export function publicAuthUnavailableResponse(status: 404 | 503): Response {

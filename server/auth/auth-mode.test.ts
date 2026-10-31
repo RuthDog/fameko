@@ -67,10 +67,11 @@ test("WorkOS mode requires complete secrets and a safe callback URL", () => {
 test("public WorkOS routes stay hidden in legacy mode and fail closed on missing secrets", () => {
   assert.deepEqual(
     publicWorkosAuthGate({ FAMEKO_AUTH_MODE: cloudflareAccessAuthMode }),
-    { ok: false, status: 404 },
+    { ok: false, reason: "public_auth_mode", status: 404 },
   );
   assert.deepEqual(publicWorkosAuthGate({ FAMEKO_AUTH_MODE: workosStagingAuthMode }), {
     ok: false,
+    reason: "public_auth_configuration",
     status: 503,
   });
   assert.deepEqual(publicWorkosAuthGate(workosEnvironment), { ok: true });
