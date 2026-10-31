@@ -59,7 +59,10 @@ test("registration document preserves Origin without leaking URL details", async
       response.headers.get("content-security-policy"),
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com https://spontaneous-theme-13-staging.authkit.app; base-uri 'none'; frame-ancestors 'none'",
     );
-    assert.match(await response.text(), /<form action="\/sign-up" method="post">/);
+    const document = await response.text();
+    assert.match(document, /<form action="\/sign-up" method="post">/);
+    assert.match(document, /name="registration-intent" type="submit" value="create"/);
+    assert.match(document, /name="registration-intent" type="submit" value="recover"/);
   } finally {
     for (const [name, value] of previousEnvironment) {
       if (value === undefined) {
@@ -74,7 +77,7 @@ test("registration document preserves Origin without leaking URL details", async
 test("registration rejects an opaque null Origin and accepts only the trusted Origin", async () => {
   const opaqueOrigin = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed",
+      body: "adult-confirmation=confirmed&registration-intent=create",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "null",
@@ -91,7 +94,7 @@ test("registration rejects an opaque null Origin and accepts only the trusted Or
 
   const trustedOrigin = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed",
+      body: "adult-confirmation=confirmed&registration-intent=create",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
@@ -142,6 +145,7 @@ test("new account writes exist only in the verified callback path", async () => 
   );
   assert.doesNotMatch(signUp, /form-action[^\n]*\*/);
   assert.match(startSignUp, /getSignUpUrl/);
+  assert.match(startSignUp, /getSignInUrl/);
   assert.match(startSignUp, /continueWorkosSignUp/);
   assert.match(signUpHandler, /issueRegistrationAttestation/);
   assert.match(signUpHandler, /isSameOriginFormRequest/);
@@ -153,7 +157,7 @@ test("new account writes exist only in the verified callback path", async () => 
 test("adult confirmation redirects only to an internal GET before WorkOS starts", async () => {
   const response = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed",
+      body: "adult-confirmation=confirmed&registration-intent=create",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
@@ -180,10 +184,36 @@ test("adult confirmation redirects only to an internal GET before WorkOS starts"
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
 });
 
+test("registration intent is required and validated before an attestation is issued", async () => {
+  for (const registrationIntent of [undefined, "unknown", "create&registration-intent=recover"]) {
+    const body = new URLSearchParams({ "adult-confirmation": "confirmed" });
+    if (registrationIntent) {
+      for (const value of registrationIntent.split("&registration-intent=")) {
+        body.append("registration-intent", value);
+      }
+    }
+    const response = await acceptWorkosSignUp(
+      new Request("https://internal-worker.example.test/sign-up", {
+        body,
+        headers: {
+          Origin: "https://auth-staging.example.test",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "same-origin",
+        },
+        method: "POST",
+      }),
+      environment,
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("set-cookie"), null);
+  }
+});
+
 test("internal GET consumes issued attestation and starts a callback-bound WorkOS flow", async () => {
   const post = await acceptWorkosSignUp(
     new Request("https://internal-worker.example.test/sign-up", {
-      body: "adult-confirmation=confirmed",
+      body: "adult-confirmation=confirmed&registration-intent=create",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://auth-staging.example.test",
@@ -210,9 +240,14 @@ test("internal GET consumes issued attestation and starts a callback-bound WorkO
       },
     }),
     environment,
-    async (options) => {
-      receivedOptions = options;
-      return "https://api.workos.com/user_management/authorize?synthetic=1";
+    {
+      createSignInUrl: async () => {
+        throw new Error("create flow must not start sign-in");
+      },
+      createSignUpUrl: async (options) => {
+        receivedOptions = options;
+        return "https://api.workos.com/user_management/authorize?synthetic=1";
+      },
     },
   );
 
@@ -249,9 +284,15 @@ test("internal GET consumes issued attestation and starts a callback-bound WorkO
       },
     }),
     environment,
-    async () => {
-      replayFactoryCalled = true;
-      return "https://api.workos.com/should-not-run";
+    {
+      createSignInUrl: async () => {
+        replayFactoryCalled = true;
+        return "https://api.workos.com/should-not-run";
+      },
+      createSignUpUrl: async () => {
+        replayFactoryCalled = true;
+        return "https://api.workos.com/should-not-run";
+      },
     },
   );
   assert.equal(replay.status, 303);
@@ -262,6 +303,71 @@ test("internal GET consumes issued attestation and starts a callback-bound WorkO
   assert.equal(replayFactoryCalled, false);
 });
 
+test("recovery intent starts WorkOS sign-in with the signed callback attestation", async () => {
+  const post = await acceptWorkosSignUp(
+    new Request("https://internal-worker.example.test/sign-up", {
+      body: "adult-confirmation=confirmed&registration-intent=recover",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://auth-staging.example.test",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+      },
+      method: "POST",
+    }),
+    environment,
+  );
+  const issuedToken = cookieValue(
+    post.headers.get("set-cookie"),
+    registrationAttestationCookieName,
+  );
+  assert.ok(issuedToken);
+
+  let signInOptions: { returnTo: string; state: string } | undefined;
+  let signUpCalled = false;
+  const response = await continueWorkosSignUp(
+    new Request("https://internal-worker.example.test/auth/start-sign-up", {
+      headers: {
+        Accept: "text/html",
+        Cookie: `${registrationAttestationCookieName}=${issuedToken}`,
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+      },
+    }),
+    environment,
+    {
+      createSignInUrl: async (options) => {
+        signInOptions = options;
+        return "https://api.workos.com/user_management/authorize?synthetic=recover";
+      },
+      createSignUpUrl: async () => {
+        signUpCalled = true;
+        return "https://api.workos.com/should-not-run";
+      },
+    },
+  );
+
+  assert.equal(response.status, 303);
+  assert.equal(signUpCalled, false);
+  assert.equal(signInOptions?.returnTo, "/app");
+  assert.ok(signInOptions?.state);
+  const startedToken = cookieValue(
+    response.headers.get("set-cookie"),
+    registrationAttestationCookieName,
+  );
+  assert.equal(startedToken, signInOptions.state);
+  assert.equal(
+    await verifyRegistrationCallbackAttestation(
+      signInOptions.state,
+      startedToken,
+      environment,
+    ),
+    true,
+  );
+});
+
 test("internal sign-up start fails closed without a valid document-navigation attestation", async () => {
   let factoryCalled = false;
   const missing = await continueWorkosSignUp(
@@ -269,9 +375,15 @@ test("internal sign-up start fails closed without a valid document-navigation at
       headers: { Accept: "text/html" },
     }),
     environment,
-    async () => {
-      factoryCalled = true;
-      return "https://api.workos.com/should-not-run";
+    {
+      createSignInUrl: async () => {
+        factoryCalled = true;
+        return "https://api.workos.com/should-not-run";
+      },
+      createSignUpUrl: async () => {
+        factoryCalled = true;
+        return "https://api.workos.com/should-not-run";
+      },
     },
   );
   assert.equal(missing.status, 303);
@@ -282,7 +394,10 @@ test("internal sign-up start fails closed without a valid document-navigation at
       headers: { Accept: "text/html", Purpose: "prefetch" },
     }),
     environment,
-    async () => "https://api.workos.com/should-not-run",
+    {
+      createSignInUrl: async () => "https://api.workos.com/should-not-run",
+      createSignUpUrl: async () => "https://api.workos.com/should-not-run",
+    },
   );
   assert.equal(prefetch.status, 404);
 });

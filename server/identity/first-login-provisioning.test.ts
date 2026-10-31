@@ -6,6 +6,12 @@ import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { unstable_splitSqlQuery } from "wrangler";
 
 import { currentPlanningYear, emptyPlanningDataV3 } from "../../shared/planning/seed-planning-data.ts";
+import {
+  issueRegistrationAttestation,
+  mayProvisionWorkosIdentity,
+  startRegistrationAttestation,
+  validateRegistrationCallbackAttestation,
+} from "../auth/registration.ts";
 import { provisionPilotIdentity } from "./provision-pilot.ts";
 import {
   provisionWorkosAccountAfterVerifiedCallback,
@@ -95,6 +101,45 @@ test("first verified login atomically creates User, Household, membership, ident
     assert.equal(planningYear?.data_version, 3);
     assert.equal(planningYear?.revision, 1);
     assert.deepEqual(JSON.parse(planningYear?.planning_data ?? "null"), emptyPlanningDataV3);
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("recovery of an existing WorkOS user without a Fameko identity creates one complete graph", async () => {
+  const { database, miniflare } = await createDatabase("workos-recovery-create");
+  const environment = {
+    WORKOS_COOKIE_PASSWORD: "recovery-test-password-that-is-at-least-32-chars",
+  };
+  const workosContext = {
+    provider: "workos",
+    providerSubject: "workos-incomplete-user",
+    verifiedEmail: "incomplete@example.test",
+  };
+
+  try {
+    const issued = await issueRegistrationAttestation(environment, "recover");
+    const started = await startRegistrationAttestation(issued.token, environment);
+    assert.ok(started);
+    const validation = await validateRegistrationCallbackAttestation(
+      started.token,
+      started.token,
+      environment,
+    );
+    assert.equal(validation, "valid");
+    assert.equal(mayProvisionWorkosIdentity(false, validation === "valid"), true);
+
+    const first = await provisionWorkosAccountAfterVerifiedCallback(database, workosContext);
+    const second = await provisionWorkosAccountAfterVerifiedCallback(database, workosContext);
+    assert.equal(second.user.id, first.user.id);
+    assert.equal(second.household.id, first.household.id);
+    assert.deepEqual(await getCounts(database), {
+      auth_identities: 1,
+      household_members: 1,
+      households: 1,
+      planning_years: 1,
+      users: 1,
+    });
   } finally {
     await miniflare.dispose();
   }

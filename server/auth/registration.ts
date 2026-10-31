@@ -2,6 +2,8 @@ export const adultRegistrationAttestation = "adult-confirmed-v1";
 export const registrationAttestationCookieName = "__Host-fameko-sign-up";
 export const registrationAttestationTtlSeconds = 5 * 60;
 
+export type RegistrationIntent = "create" | "recover";
+
 type AuthEnvironment = Record<string, string | undefined>;
 type RegistrationPhase = "issued" | "started";
 
@@ -17,11 +19,12 @@ export type RegistrationAttestationValidationResult =
 
 type RegistrationAttestationPayload = {
   expiresAt: number;
+  intent: RegistrationIntent;
   issuedAt: number;
   nonce: string;
   phase: RegistrationPhase;
   purpose: typeof adultRegistrationAttestation;
-  version: 1;
+  version: 2;
 };
 
 type AttestationOptions = {
@@ -103,9 +106,10 @@ function isPayloadShape(value: unknown): value is RegistrationAttestationPayload
     return false;
   }
   const payload = value as Partial<RegistrationAttestationPayload>;
-  return payload.version === 1
+  return payload.version === 2
     && payload.purpose === adultRegistrationAttestation
     && (payload.phase === "issued" || payload.phase === "started")
+    && (payload.intent === "create" || payload.intent === "recover")
     && typeof payload.nonce === "string"
     && /^[0-9a-f-]{36}$/iu.test(payload.nonce)
     && typeof payload.issuedAt === "number"
@@ -174,31 +178,41 @@ async function verifyToken(
 
 export async function issueRegistrationAttestation(
   environment: AuthEnvironment,
+  intent: RegistrationIntent,
   options: AttestationOptions = {},
-): Promise<{ expiresAt: number; token: string }> {
+): Promise<{ expiresAt: number; intent: RegistrationIntent; token: string }> {
   const issuedAt = epochSeconds(options.now);
   const payload: RegistrationAttestationPayload = {
     expiresAt: issuedAt + registrationAttestationTtlSeconds,
+    intent,
     issuedAt,
     nonce: options.nonce ?? crypto.randomUUID(),
     phase: "issued",
     purpose: adultRegistrationAttestation,
-    version: 1,
+    version: 2,
   };
-  return { expiresAt: payload.expiresAt, token: await signPayload(payload, environment) };
+  return {
+    expiresAt: payload.expiresAt,
+    intent: payload.intent,
+    token: await signPayload(payload, environment),
+  };
 }
 
 export async function startRegistrationAttestation(
   token: string | undefined,
   environment: AuthEnvironment,
   now = Date.now(),
-): Promise<{ expiresAt: number; token: string } | null> {
+): Promise<{ expiresAt: number; intent: RegistrationIntent; token: string } | null> {
   const verified = await verifyToken(token, "issued", environment, epochSeconds(now));
   if (verified.result !== "valid") {
     return null;
   }
   const started = { ...verified.payload, phase: "started" as const };
-  return { expiresAt: started.expiresAt, token: await signPayload(started, environment) };
+  return {
+    expiresAt: started.expiresAt,
+    intent: started.intent,
+    token: await signPayload(started, environment),
+  };
 }
 
 export async function validateRegistrationCallbackAttestation(

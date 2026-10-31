@@ -18,7 +18,8 @@ export default async function AuthenticationErrorPage({
         </h1>
         <p className="mt-4 leading-7 text-stone-600">
           Försök igen om en liten stund. Inga tekniska detaljer eller kontouppgifter
-          visas här.
+          visas här. Om ditt WorkOS-konto redan skapades kan du slutföra
+          registreringen utan att skapa ett nytt konto.
         </p>
         {correlationId ? (
           <p className="mt-3 text-sm text-stone-500">
@@ -29,7 +30,7 @@ export default async function AuthenticationErrorPage({
           className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full bg-[#1d252d] px-6 font-semibold text-white"
           href="/sign-up"
         >
-          B&ouml;rja om registreringen
+          Börja om eller slutför registreringen
         </a>
         <a
           className="mt-3 inline-flex min-h-12 items-center justify-center rounded-full border border-stone-300 px-6 font-semibold"

@@ -9,6 +9,7 @@ import {
   registrationAttestationDeleteCookie,
   registrationAttestationSetCookie,
   startRegistrationAttestation,
+  type RegistrationIntent,
 } from "./registration.ts";
 import {
   AuthFlowFailure,
@@ -16,10 +17,24 @@ import {
   reportAuthFlowFailure,
 } from "./auth-diagnostics.ts";
 
-type WorkosSignUpUrlFactory = (options: {
+type WorkosAuthorizationUrlFactory = (options: {
   returnTo: string;
   state: string;
 }) => Promise<string>;
+
+type WorkosRegistrationUrlFactories = {
+  createSignInUrl: WorkosAuthorizationUrlFactory;
+  createSignUpUrl: WorkosAuthorizationUrlFactory;
+};
+
+function registrationIntent(form: FormData): RegistrationIntent | null {
+  const values = form.getAll("registration-intent");
+  if (values.length !== 1) {
+    return null;
+  }
+  const [value] = values;
+  return value === "create" || value === "recover" ? value : null;
+}
 
 function redirect(location: string, setCookie?: string): Response {
   const headers = new Headers({
@@ -54,9 +69,13 @@ export async function acceptWorkosSignUp(
       new URL("/sign-up?error=adult-required", gate.publicOrigin).toString(),
     );
   }
+  const intent = registrationIntent(form);
+  if (!intent) {
+    return publicAuthUnavailableResponse(404);
+  }
 
   try {
-    const attestation = await issueRegistrationAttestation(environment);
+    const attestation = await issueRegistrationAttestation(environment, intent);
     return redirect(
       new URL("/auth/start-sign-up", gate.publicOrigin).toString(),
       registrationAttestationSetCookie(attestation.token, attestation.expiresAt),
@@ -74,7 +93,7 @@ export async function acceptWorkosSignUp(
 export async function continueWorkosSignUp(
   request: Request,
   environment: Record<string, string | undefined>,
-  createSignUpUrl: WorkosSignUpUrlFactory,
+  factories: WorkosRegistrationUrlFactories,
 ): Promise<Response> {
   const gate = publicWorkosAuthGate(environment);
   if (!gate.ok) {
@@ -101,7 +120,10 @@ export async function continueWorkosSignUp(
   }
 
   try {
-    const url = await createSignUpUrl({
+    const createAuthorizationUrl = attestation.intent === "recover"
+      ? factories.createSignInUrl
+      : factories.createSignUpUrl;
+    const url = await createAuthorizationUrl({
       returnTo: "/app",
       state: attestation.token,
     });

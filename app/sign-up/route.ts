@@ -30,7 +30,9 @@ function registrationPage(request: Request): Response {
       p { color: #57534e; line-height: 1.65; }
       label { display: flex; gap: 12px; margin-top: 24px; line-height: 1.5; }
       input { width: 20px; height: 20px; flex: 0 0 auto; }
-      button { width: 100%; min-height: 48px; margin-top: 24px; border: 0; border-radius: 999px; background: #1d252d; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      .actions { display: grid; gap: 12px; margin-top: 24px; }
+      button { width: 100%; min-height: 48px; border: 0; border-radius: 999px; background: #1d252d; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      button.secondary { border: 1px solid #d6d3d1; background: white; color: #1d252d; }
       a { color: #3f5140; }
       #form-error { color: #9f1239; font-weight: 650; }
     </style>
@@ -44,7 +46,10 @@ function registrationPage(request: Request): Response {
         ${registrationError}
         <form action="/sign-up" method="post">
           <label><input name="adult-confirmation" required type="checkbox" value="confirmed" /><span>Jag bekräftar att jag är minst 18 år.</span></label>
-          <button type="submit">Fortsätt med e-post</button>
+          <div class="actions">
+            <button name="registration-intent" type="submit" value="create">Skapa nytt konto</button>
+            <button class="secondary" name="registration-intent" type="submit" value="recover">Jag har redan påbörjat registreringen</button>
+          </div>
         </form>
         <p>Har du redan ett konto? <a href="/sign-in">Logga in</a>.</p>
       </section>

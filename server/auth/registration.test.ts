@@ -22,7 +22,8 @@ const now = Date.UTC(2026, 9, 31, 10, 0, 0);
 const nonce = "018f85c8-9c77-7d8e-9a1c-0123456789ab";
 
 test("adult registration attestation rotates from issued to callback-bound started state", async () => {
-  const issued = await issueRegistrationAttestation(environment, { nonce, now });
+  const issued = await issueRegistrationAttestation(environment, "create", { nonce, now });
+  assert.equal(issued.intent, "create");
   const issuedCookie = registrationAttestationSetCookie(issued.token, issued.expiresAt, now);
   const request = new Request("https://auth-staging.example.test/auth/start-sign-up", {
     headers: { Cookie: issuedCookie.split(";", 1)[0] },
@@ -31,6 +32,7 @@ test("adult registration attestation rotates from issued to callback-bound start
 
   const started = await startRegistrationAttestation(issued.token, environment, now);
   assert.ok(started);
+  assert.equal(started.intent, "create");
   assert.notEqual(started.token, issued.token);
   assert.equal(
     await verifyRegistrationCallbackAttestation(
@@ -55,7 +57,7 @@ test("adult registration attestation rotates from issued to callback-bound start
 });
 
 test("registration attestation is tamper-evident, secret-bound, and expires after five minutes", async () => {
-  const issued = await issueRegistrationAttestation(environment, { nonce, now });
+  const issued = await issueRegistrationAttestation(environment, "create", { nonce, now });
   const tampered = `${issued.token.slice(0, -1)}${issued.token.endsWith("a") ? "b" : "a"}`;
   assert.equal(await startRegistrationAttestation(tampered, environment, now), null);
   assert.equal(
@@ -83,10 +85,46 @@ test("registration attestation is tamper-evident, secret-bound, and expires afte
   );
 });
 
+test("an abandoned registration can restart only with the newly issued attestation", async () => {
+  const abandoned = await issueRegistrationAttestation(environment, "create", { nonce, now });
+  const restarted = await issueRegistrationAttestation(environment, "recover", {
+    nonce: "128f85c8-9c77-7d8e-9a1c-0123456789ab",
+    now: now + 1_000,
+  });
+  const abandonedStarted = await startRegistrationAttestation(abandoned.token, environment, now);
+  const restartedStarted = await startRegistrationAttestation(
+    restarted.token,
+    environment,
+    now + 1_000,
+  );
+  assert.ok(abandonedStarted);
+  assert.ok(restartedStarted);
+  assert.equal(restartedStarted.intent, "recover");
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      abandonedStarted.token,
+      restartedStarted.token,
+      environment,
+      now + 1_000,
+    ),
+    "state_mismatch",
+  );
+  assert.equal(
+    await validateRegistrationCallbackAttestation(
+      restartedStarted.token,
+      restartedStarted.token,
+      environment,
+      now + 1_000,
+    ),
+    "valid",
+  );
+});
+
 test("callback attestation reports a bounded fail-closed validation reason", async () => {
-  const issued = await issueRegistrationAttestation(environment, { nonce, now });
+  const issued = await issueRegistrationAttestation(environment, "recover", { nonce, now });
   const started = await startRegistrationAttestation(issued.token, environment, now);
   assert.ok(started);
+  assert.equal(started.intent, "recover");
 
   assert.equal(
     await validateRegistrationCallbackAttestation(undefined, undefined, environment, now),
@@ -180,7 +218,7 @@ test("callback diagnostics emit only the bounded attestation reason", () => {
 });
 
 test("registration cookie is host-only, short-lived, secure, HttpOnly, and SameSite Lax", async () => {
-  const issued = await issueRegistrationAttestation(environment, { nonce, now });
+  const issued = await issueRegistrationAttestation(environment, "create", { nonce, now });
   const setCookie = registrationAttestationSetCookie(issued.token, issued.expiresAt, now);
   assert.match(setCookie, new RegExp(`^${registrationAttestationCookieName}=`));
   assert.match(setCookie, /; Path=\//u);
@@ -199,6 +237,21 @@ test("registration cookie is host-only, short-lived, secure, HttpOnly, and SameS
 test("new WorkOS account requires a verified callback attestation", () => {
   assert.equal(mayProvisionWorkosIdentity(false, true), true);
   assert.equal(mayProvisionWorkosIdentity(false, false), false);
+});
+
+test("every bounded attestation failure denies provisioning for an unknown WorkOS identity", () => {
+  const attestationIsValid = (result: string) => result === "valid";
+  for (const reason of [
+    "configuration_error",
+    "expired",
+    "invalid_payload",
+    "invalid_signature",
+    "missing",
+    "state_mismatch",
+    "wrong_phase",
+  ] as const) {
+    assert.equal(mayProvisionWorkosIdentity(false, attestationIsValid(reason)), false);
+  }
 });
 
 test("an existing WorkOS identity can sign in without repeating registration attestation", () => {
