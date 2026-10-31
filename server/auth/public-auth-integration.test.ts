@@ -37,6 +37,10 @@ test("new account writes exist only in the verified callback path", async () => 
       callback.indexOf("const database = await getFamekoDatabase"),
   );
   assert.match(signUp, /startWorkosSignUp/);
+  assert.match(
+    signUp,
+    /form-action 'self' https:\/\/api\.workos\.com https:\/\/\*\.authkit\.app/,
+  );
   assert.match(signUpHandler, /adultRegistrationAttestation/);
   assert.match(signUpHandler, /isSameOriginFormRequest/);
 });
@@ -59,9 +63,10 @@ test("adult confirmation transitions a same-origin browser POST to WorkOS Hosted
       body: "adult-confirmation=confirmed",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
+        Origin: "https://auth-staging.example.test",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Site": "none",
       },
       method: "POST",
     }),

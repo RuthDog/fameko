@@ -76,7 +76,7 @@ test("public WorkOS routes stay hidden in legacy mode and fail closed on missing
   assert.deepEqual(publicWorkosAuthGate(workosEnvironment), { ok: true });
 });
 
-test("registration POST accepts only same-origin browser form submissions", () => {
+test("registration POST uses exact Origin with same-origin Fetch Metadata as fallback", () => {
   assert.equal(
     isSameOriginFormRequest(
       new Request("https://auth-staging.example.test/sign-up", {
@@ -85,6 +85,32 @@ test("registration POST accepts only same-origin browser form submissions", () =
           "Content-Type": "application/x-www-form-urlencoded",
           Origin: "https://auth-staging.example.test",
           "Sec-Fetch-Site": "same-origin",
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    isSameOriginFormRequest(
+      new Request("https://auth-staging.example.test/sign-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Origin: "https://auth-staging.example.test",
+          "Sec-Fetch-Site": "none",
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    isSameOriginFormRequest(
+      new Request("https://auth-staging.example.test/sign-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Origin: "https://auth-staging.example.test",
+          "Sec-Fetch-Site": "same-site",
         },
       }),
     ),
@@ -111,7 +137,19 @@ test("registration POST accepts only same-origin browser form submissions", () =
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Origin: "https://attacker.example",
-          "Sec-Fetch-Site": "cross-site",
+          "Sec-Fetch-Site": "same-origin",
+        },
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    isSameOriginFormRequest(
+      new Request("https://auth-staging.example.test/sign-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Sec-Fetch-Site": "none",
         },
       }),
     ),
