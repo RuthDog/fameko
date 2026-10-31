@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { redirect } from "next/navigation.js";
 
 import { GET as getSignUpDocument } from "../../app/sign-up/route.ts";
 import { workosStagingAuthMode } from "./auth-mode.ts";
@@ -9,6 +10,7 @@ import {
   verifyRegistrationCallbackAttestation,
 } from "./registration.ts";
 import { acceptWorkosSignUp, continueWorkosSignUp } from "./workos-sign-up.ts";
+import { completeWorkosSignOut } from "./workos-sign-out.ts";
 
 const middlewareUrl = new URL("../../middleware.ts", import.meta.url);
 const callbackUrl = new URL("../../app/auth/callback/route.ts", import.meta.url);
@@ -38,6 +40,20 @@ function cookieValue(setCookie: string | null, name: string): string | undefined
   }
   const match = new RegExp(`(?:^|,\\s*)${name}=([^;]+)`).exec(setCookie);
   return match?.[1];
+}
+
+function redirectTarget(error: unknown): string | null {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("digest" in error) ||
+    typeof error.digest !== "string"
+  ) {
+    return null;
+  }
+
+  const parts = error.digest.split(";");
+  return parts[0] === "NEXT_REDIRECT" ? parts.slice(2, -2).join(";") : null;
 }
 
 test("registration document preserves Origin without leaking URL details", async () => {
@@ -406,12 +422,31 @@ test("logout cookie mutation stays in a Server Action with all three UX choices"
   const signOut = await readFile(signOutUrl, "utf8");
   const menu = await readFile(accountMenuUrl, "utf8");
   assert.match(signOut, /^"use server";/);
-  assert.match(signOut, /await signOut\(\{ returnTo: "\/" \}\)/);
+  assert.match(signOut, /completeWorkosSignOut\(\(\) => signOut\(\)\)/);
+  assert.doesNotMatch(signOut, /returnTo/);
   assert.match(menu, /Spara och logga ut/);
   assert.match(menu, /Fortsätt redigera/);
   assert.match(menu, /Logga ut utan att spara/);
   assert.doesNotMatch(menu, /@workos-inc/);
   assert.doesNotMatch(menu, /WORKOS_(?:API_KEY|COOKIE_PASSWORD)/);
+});
+
+test("logout preserves AuthKit's NEXT_REDIRECT to the WorkOS logout endpoint", async () => {
+  const logoutUrl = "https://api.workos.com/user_management/sessions/logout";
+
+  await assert.rejects(
+    completeWorkosSignOut(async () => redirect(logoutUrl)),
+    (error) => redirectTarget(error) === logoutUrl,
+  );
+});
+
+test("logout sends genuine SDK failures to the local auth error page", async () => {
+  await assert.rejects(
+    completeWorkosSignOut(async () => {
+      throw new Error("synthetic logout failure");
+    }),
+    (error) => redirectTarget(error) === "/auth/error",
+  );
 });
 
 test("session summary exposes no internal ids or tokens and is never cacheable", async () => {

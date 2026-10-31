@@ -9,6 +9,7 @@ import {
   validateWorkosConfiguration,
   workosStagingAuthMode,
 } from "../../../server/auth/auth-mode.ts";
+import { completeWorkosSignOut } from "../../../server/auth/workos-sign-out.ts";
 
 export async function signOutAction(): Promise<void> {
   let mode;
@@ -25,10 +26,11 @@ export async function signOutAction(): Promise<void> {
   if (mode === workosStagingAuthMode) {
     try {
       validateWorkosConfiguration(process.env);
-      await signOut({ returnTo: "/" });
     } catch {
       redirect("/auth/error");
     }
+
+    await completeWorkosSignOut(() => signOut());
   }
 
   redirect("/auth/error");
