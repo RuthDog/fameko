@@ -11,6 +11,7 @@ import {
   mayProvisionWorkosIdentity,
   startRegistrationAttestation,
   validateRegistrationCallbackAttestation,
+  validateRegistrationCallbackAttestationDetails,
 } from "../auth/registration.ts";
 import { provisionPilotIdentity } from "./provision-pilot.ts";
 import {
@@ -19,7 +20,10 @@ import {
 } from "./first-login-provisioning.ts";
 import type { VerifiedAuthContext } from "./identity-types.ts";
 
-const migrationUrl = new URL("../../migrations/0001_identity_foundation.sql", import.meta.url);
+const migrationUrls = [
+  new URL("../../migrations/0001_identity_foundation.sql", import.meta.url),
+  new URL("../../migrations/0002_account_data_control.sql", import.meta.url),
+];
 const authContext: VerifiedAuthContext = {
   provider: "test_provider",
   providerSubject: "verified-subject-a",
@@ -35,13 +39,15 @@ async function createDatabase(name: string) {
     }),
   );
   const database = await miniflare.getD1Database("FAMEKO_DB");
-  const migration = await readFile(migrationUrl, "utf8");
-  await database.batch(
-    unstable_splitSqlQuery(migration)
-      .map((statement) => statement.trim())
-      .filter(Boolean)
-      .map((statement) => database.prepare(statement)),
-  );
+  for (const migrationUrl of migrationUrls) {
+    const migration = await readFile(migrationUrl, "utf8");
+    await database.batch(
+      unstable_splitSqlQuery(migration)
+        .map((statement) => statement.trim())
+        .filter(Boolean)
+        .map((statement) => database.prepare(statement)),
+    );
+  }
   return { database, miniflare };
 }
 
@@ -129,7 +135,17 @@ test("recovery of an existing WorkOS user without a Fameko identity creates one 
     assert.equal(validation, "valid");
     assert.equal(mayProvisionWorkosIdentity(false, validation === "valid"), true);
 
-    const first = await provisionWorkosAccountAfterVerifiedCallback(database, workosContext);
+    const details = await validateRegistrationCallbackAttestationDetails(
+      started.token,
+      started.token,
+      environment,
+    );
+    assert.ok(details.acceptance);
+    const first = await provisionWorkosAccountAfterVerifiedCallback(
+      database,
+      workosContext,
+      details.acceptance,
+    );
     const second = await provisionWorkosAccountAfterVerifiedCallback(database, workosContext);
     assert.equal(second.user.id, first.user.id);
     assert.equal(second.household.id, first.household.id);
@@ -140,6 +156,10 @@ test("recovery of an existing WorkOS user without a Fameko identity creates one 
       planning_years: 1,
       users: 1,
     });
+    const acceptanceCount = await database
+      .prepare("SELECT COUNT(*) AS count FROM legal_acceptances")
+      .first<{ count: number }>();
+    assert.equal(acceptanceCount?.count, 1);
   } finally {
     await miniflare.dispose();
   }
@@ -219,6 +239,45 @@ test("a failed PlanningYear insert rolls back the complete first-login transacti
   }
 });
 
+test("verified legal acceptance rolls back with failed WorkOS provisioning", async () => {
+  const { database, miniflare } = await createDatabase("workos-acceptance-rollback");
+  try {
+    await database
+      .prepare(
+        `CREATE TRIGGER reject_workos_planning_year
+         BEFORE INSERT ON planning_years
+         BEGIN
+           SELECT RAISE(ABORT, 'synthetic provisioning failure');
+         END`,
+      )
+      .run();
+    await assert.rejects(
+      provisionWorkosAccountAfterVerifiedCallback(
+        database,
+        {
+          provider: "workos",
+          providerSubject: "workos-rollback",
+          verifiedEmail: "rollback@example.test",
+        },
+        {
+          acceptedAt: "2026-11-01T10:00:00.000Z",
+          privacyVersion: "privacy-1.0-draft",
+          termsVersion: "terms-1.0-draft",
+        },
+      ),
+    );
+    const counts = await database
+      .prepare(
+        `SELECT (SELECT COUNT(*) FROM users) AS users,
+                (SELECT COUNT(*) FROM legal_acceptances) AS acceptances`,
+      )
+      .first<{ acceptances: number; users: number }>();
+    assert.deepEqual(counts, { acceptances: 0, users: 0 });
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
 test("an existing manually provisioned identity gets exactly one missing PlanningYear", async () => {
   const { database, miniflare } = await createDatabase("first-login-existing");
 
@@ -258,9 +317,14 @@ test("verified WorkOS callback is idempotent under concurrent delivery", async (
   };
 
   try {
+    const acceptance = {
+      acceptedAt: "2026-11-01T10:00:00.000Z",
+      privacyVersion: "privacy-1.0-draft" as const,
+      termsVersion: "terms-1.0-draft" as const,
+    };
     const [first, second] = await Promise.all([
-      provisionWorkosAccountAfterVerifiedCallback(database, workosContext),
-      provisionWorkosAccountAfterVerifiedCallback(database, workosContext),
+      provisionWorkosAccountAfterVerifiedCallback(database, workosContext, acceptance),
+      provisionWorkosAccountAfterVerifiedCallback(database, workosContext, acceptance),
     ]);
 
     assert.equal(first.user.id, second.user.id);
@@ -285,11 +349,19 @@ test("same email never links a new WorkOS subject to existing pilot data", async
       email: "shared@example.test",
       providerSubject: "access-pilot-subject",
     });
-    const workos = await provisionWorkosAccountAfterVerifiedCallback(database, {
-      provider: "workos",
-      providerSubject: "workos-new-subject",
-      verifiedEmail: "shared@example.test",
-    });
+    const workos = await provisionWorkosAccountAfterVerifiedCallback(
+      database,
+      {
+        provider: "workos",
+        providerSubject: "workos-new-subject",
+        verifiedEmail: "shared@example.test",
+      },
+      {
+        acceptedAt: "2026-11-01T10:00:00.000Z",
+        privacyVersion: "privacy-1.0-draft",
+        termsVersion: "terms-1.0-draft",
+      },
+    );
 
     assert.notEqual(workos.user.id, pilot.userId);
     assert.notEqual(workos.household.id, pilot.householdId);

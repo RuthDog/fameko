@@ -22,9 +22,26 @@ test("draft legal documents remain visibly incomplete and versioned", async () =
 
   const combined = JSON.stringify([privacyDocument, termsDocument]);
   assert.match(combined, /\[FULLSTÄNDIGT NAMN\]/);
-  assert.match(combined, /\[E-POSTADRESS\]/);
+  assert.match(combined, /fameko\.pilot@gmail\.com/);
+  assert.doesNotMatch(combined, /\[E-POSTADRESS\]/);
   assert.match(combined, /BESLUT KRÄVS/);
   assert.doesNotMatch(combined, /samtycker till behandling av (alla )?personuppgifter/i);
+});
+
+test("legal drafts reflect established launch facts without claiming unfinished controls", () => {
+  const privacy = JSON.stringify(privacyDocument);
+  const terms = JSON.stringify(termsDocument);
+
+  assert.match(terms, /Fameko erbjuds kostnadsfritt\./);
+  assert.match(privacy, /inte har använts på 24 månader/);
+  assert.match(privacy, /minst 30 dagars möjlighet/);
+  assert.match(privacy, /senast inom 30 dagar/);
+  assert.match(privacy, /högst 12 månader efter att ärendet avslutats/);
+  assert.match(privacy, /7 dagar på Workers Free eller 30 dagar på Workers Paid/);
+  assert.match(privacy, /Google \(Gmail\)/);
+  assert.match(privacy, /måste verifieras och dokumenteras före slutligt godkännande/);
+  assert.match(privacy, /inte färdigställd/);
+  assert.match(terms, /KOMPLETTERA när fullständig export och säker kontoradering/);
 });
 
 test("privacy sections keep the approved order and end with controller contact", () => {
@@ -68,7 +85,7 @@ test("terms sections keep the approved order and end with contracting-party cont
     "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
   );
   assert.deepEqual(termsDocument.sections.at(-1)?.paragraphs, [
-    "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS], kontakt [E-POSTADRESS].",
+    "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS]. Kontakt: fameko.pilot@gmail.com.",
   ]);
 });
 

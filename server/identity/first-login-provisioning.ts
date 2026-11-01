@@ -16,6 +16,7 @@ import {
   IdentityAuthorizationError,
   resolveAuthorizedIdentity,
 } from "./resolve-identity.ts";
+import type { VerifiedLegalAcceptance } from "../auth/registration.ts";
 
 export class FirstLoginProvisioningError extends Error {
   constructor() {
@@ -48,6 +49,7 @@ function normalizeAuthContext(authContext: VerifiedAuthContext): VerifiedAuthCon
 async function provisionNewIdentity(
   database: D1Database,
   authContext: VerifiedAuthContext,
+  acceptance?: VerifiedLegalAcceptance,
 ): Promise<void> {
   const normalized = normalizeAuthContext(authContext);
   const planningData: unknown = emptyPlanningDataV3;
@@ -60,7 +62,7 @@ async function provisionNewIdentity(
   const householdId = crypto.randomUUID();
   const timestamp = new Date().toISOString();
 
-  await database.batch([
+  const statements = [
     database
       .prepare(
         `INSERT INTO users (id, display_name, status, created_at, updated_at)
@@ -109,7 +111,47 @@ async function provisionNewIdentity(
         timestamp,
         timestamp,
       ),
-  ]);
+  ];
+
+  if (acceptance) {
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO legal_acceptances
+             (user_id, terms_version, privacy_version, accepted_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .bind(
+          userId,
+          acceptance.termsVersion,
+          acceptance.privacyVersion,
+          acceptance.acceptedAt,
+        ),
+    );
+  }
+
+  await database.batch(statements);
+}
+
+async function recordLegalAcceptance(
+  database: D1Database,
+  userId: string,
+  acceptance: VerifiedLegalAcceptance,
+): Promise<void> {
+  await database
+    .prepare(
+      `INSERT INTO legal_acceptances
+         (user_id, terms_version, privacy_version, accepted_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, terms_version, privacy_version) DO NOTHING`,
+    )
+    .bind(
+      userId,
+      acceptance.termsVersion,
+      acceptance.privacyVersion,
+      acceptance.acceptedAt,
+    )
+    .run();
 }
 
 async function ensurePlanningYear(
@@ -156,6 +198,7 @@ async function resolveExisting(
 export async function resolveOrProvisionAuthorizedIdentity(
   database: D1Database,
   authContext: VerifiedAuthContext,
+  acceptance?: VerifiedLegalAcceptance,
 ): Promise<AuthorizedPilotContext> {
   const normalized = normalizeAuthContext(authContext);
   const repository = new IdentityRepository(database);
@@ -163,7 +206,7 @@ export async function resolveOrProvisionAuthorizedIdentity(
 
   if (!context) {
     try {
-      await provisionNewIdentity(database, normalized);
+      await provisionNewIdentity(database, normalized, acceptance);
     } catch {
       context = await resolveExisting(repository, normalized);
       if (!context) {
@@ -175,6 +218,10 @@ export async function resolveOrProvisionAuthorizedIdentity(
     if (!context) {
       throw new FirstLoginProvisioningError();
     }
+  }
+
+  if (acceptance) {
+    await recordLegalAcceptance(database, context.user.id, acceptance);
   }
 
   try {
@@ -192,11 +239,18 @@ export async function resolveOrProvisionAuthorizedIdentity(
 export async function provisionWorkosAccountAfterVerifiedCallback(
   database: D1Database,
   authContext: VerifiedAuthContext,
+  acceptance?: VerifiedLegalAcceptance,
 ): Promise<AuthorizedPilotContext> {
   const normalized = normalizeAuthContext(authContext);
   if (normalized.provider !== "workos") {
     throw new FirstLoginProvisioningError();
   }
 
-  return resolveOrProvisionAuthorizedIdentity(database, normalized);
+  const repository = new IdentityRepository(database);
+  const existing = await resolveExisting(repository, normalized);
+  if (!existing && !acceptance) {
+    throw new FirstLoginProvisioningError();
+  }
+
+  return resolveOrProvisionAuthorizedIdentity(database, normalized, acceptance);
 }

@@ -12,6 +12,7 @@ import {
   registrationAttestationTtlSeconds,
   startRegistrationAttestation,
   validateRegistrationCallbackAttestation,
+  validateRegistrationCallbackAttestationDetails,
   verifyRegistrationCallbackAttestation,
 } from "./registration.ts";
 import {
@@ -52,6 +53,22 @@ test("adult registration attestation rotates from issued to callback-bound start
       now,
     ),
     true,
+  );
+  assert.deepEqual(
+    await validateRegistrationCallbackAttestationDetails(
+      started.token,
+      started.token,
+      environment,
+      now,
+    ),
+    {
+      acceptance: {
+        acceptedAt: new Date(now).toISOString(),
+        privacyVersion: currentPrivacyDocumentVersion,
+        termsVersion: currentTermsDocumentVersion,
+      },
+      result: "valid",
+    },
   );
 
   assert.equal(await startRegistrationAttestation(started.token, environment, now), null);

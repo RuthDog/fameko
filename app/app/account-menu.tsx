@@ -18,6 +18,7 @@ export function AccountMenu({ hasUnsavedChanges, onSave }: AccountMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -85,6 +86,37 @@ export function AccountMenu({ hasUnsavedChanges, onSave }: AccountMenuProps) {
     await signOutAction();
   }
 
+  async function exportAccountData() {
+    setExporting(true);
+    setMessage("");
+    try {
+      const response = await fetch("/app/api/account/export", {
+        body: "{}",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      if (!response.ok) {
+        setMessage("Exporten kunde inte skapas säkert.");
+        return;
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "fameko-export.json";
+      link.click();
+      URL.revokeObjectURL(url);
+      setMenuOpen(false);
+    } catch {
+      setMessage("Exporten kunde inte skapas säkert.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <div className="relative" ref={menuRef}>
@@ -107,6 +139,22 @@ export function AccountMenu({ hasUnsavedChanges, onSave }: AccountMenuProps) {
               {email ?? "Inloggat konto"}
             </p>
             <button
+              className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-stone-900 hover:bg-stone-100 disabled:opacity-50"
+              disabled={exporting}
+              onClick={() => void exportAccountData()}
+              role="menuitem"
+              type="button"
+            >
+              {exporting ? "Förbereder export…" : "Exportera mina uppgifter"}
+            </button>
+            <a
+              className="mt-1 block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-700 hover:bg-rose-50"
+              href="/app/account/delete"
+              role="menuitem"
+            >
+              Radera mitt konto
+            </a>
+            <button
               className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-stone-900 hover:bg-stone-100"
               onClick={() => void beginLogout()}
               role="menuitem"
@@ -114,6 +162,7 @@ export function AccountMenu({ hasUnsavedChanges, onSave }: AccountMenuProps) {
             >
               Logga ut
             </button>
+            {message ? <p className="px-2 pt-2 text-xs text-rose-700" role="alert">{message}</p> : null}
           </div>
         ) : null}
       </div>

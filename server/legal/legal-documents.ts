@@ -51,19 +51,22 @@ export const privacyDocument: LegalDocument = {
       heading: "Leverantörer och mottagare",
       paragraphs: [
         "Cloudflare används för webbdrift, routing, EU-begränsad D1-databas och driftloggar. WorkOS används för Hosted UI, e-postkod, identitet och sessioner. Ekonomiska planeringsvärden skickas inte till WorkOS av Famekos integration.",
+        "Google (Gmail) används när du kontaktar Fameko via e-post. Meddelandets innehåll, din e-postadress och teknisk e-postmetadata kan då behandlas av Google. [KOMPLETTERA med verifierad avtals-, lagrings- och överföringsinformation före slutligt godkännande.]",
         "Fameko laddar inte externa leverantörslogotyper i arbetsytan. Varumärkesmarkörer visas lokalt och skickar inga företagsnamn till en logotyptjänst.",
       ],
     },
     {
       heading: "Behandling utanför EU/EES",
       paragraphs: [
-        "WorkOS och Cloudflare kan innebära behandling eller åtkomst utanför EU/EES. [KOMPLETTERA med ingångna personuppgiftsbiträdesavtal, aktuella underbiträden, överföringsmekanismer och utförd tredjelandsbedömning innan publik lansering.]",
+        "WorkOS, Cloudflare och Google kan innebära behandling eller åtkomst utanför EU/EES. [KOMPLETTERA med ingångna personuppgiftsbiträdesavtal, aktuella underbiträden, överföringsmekanismer och utförd tredjelandsbedömning innan publik lansering.]",
       ],
     },
     {
       heading: "Lagringstid och radering",
       paragraphs: [
-        "[BESLUT KRÄVS: lagringstid för aktiva och inaktiva konton, WorkOS-historik, supportärenden och loggar.] D1:s återställningshistorik kan innehålla raderad information i upp till 30 dagar. Cloudflare Workers Logs har olika retention beroende på kontoplan.",
+        "Kontouppgifter och planeringsdata sparas medan kontot används. Föreslagen regel är att ett konto som inte har använts på 24 månader får raderas efter e-postmeddelande och minst 30 dagars möjlighet att behålla kontot. När den säkra raderingsfunktionen är implementerad ska en bekräftad begäran normalt slutföras omedelbart och senast inom 30 dagar om teknisk uppföljning krävs. [BESLUT KRÄVS: godkänn dessa lagringstider före publik lansering.]",
+        "Supportärenden föreslås sparas i högst 12 månader efter att ärendet avslutats, om uppgifterna inte behöver behållas längre för ett konkret rättsligt anspråk. [BESLUT KRÄVS: godkänn lagringstiden och verifiera Gmail-kontots faktiska gallringsmöjligheter.]",
+        "Raderade D1-uppgifter kan finnas kvar i Cloudflare Time Travel i 7 dagar på Workers Free eller 30 dagar på Workers Paid. Aktuell kontoplan och faktisk retention måste verifieras före lansering. Cloudflare Workers Logs har enligt nuvarande dokumentation högst 7 dagars retention. Lagringstid och radering hos WorkOS och eventuella underbiträden måste verifieras och dokumenteras före slutligt godkännande.",
         "En fullständig självbetjäningsfunktion för export och kontoradering är inte färdigställd. Den ska omfatta Fameko-data, WorkOS-identitet och aktiva sessioner utan att påverka andra hushåll.",
       ],
     },
@@ -77,7 +80,7 @@ export const privacyDocument: LegalDocument = {
     {
       heading: "Dina rättigheter",
       paragraphs: [
-        "Du kan, beroende på omständigheterna, begära tillgång, rättelse, radering, begränsning och dataportabilitet samt invända mot behandling som bygger på berättigat intresse. Kontakt: [E-POSTADRESS]. Vi kan behöva verifiera din identitet innan en begäran genomförs.",
+        "Du kan, beroende på omständigheterna, begära tillgång, rättelse, radering, begränsning och dataportabilitet samt invända mot behandling som bygger på berättigat intresse. Kontakta fameko.pilot@gmail.com. Vi kan behöva verifiera din identitet innan en begäran genomförs.",
         "Du kan lämna klagomål till Integritetsskyddsmyndigheten, imy.se.",
       ],
     },
@@ -109,7 +112,7 @@ export const termsDocument: LegalDocument = {
       heading: "Om Fameko",
       paragraphs: [
         "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
-        "[BESLUT KRÄVS: tjänsten är kostnadsfri pilot, kostnadsfri tjänst eller betald tjänst. Pris, betalningsvillkor, uppsägning och eventuell ångerrätt ska anges innan publik lansering.]",
+        "Fameko erbjuds kostnadsfritt.",
       ],
     },
     {
@@ -146,7 +149,7 @@ export const termsDocument: LegalDocument = {
       heading: "Dina data, export och avslut",
       paragraphs: [
         "Du behåller dina rättigheter till de uppgifter du själv lägger in. [KOMPLETTERA när fullständig export och säker kontoradering är implementerade och testade.]",
-        "[BESLUT KRÄVS: regler och förvarning för inaktiva konton samt vad som sker om tjänsten avvecklas.]",
+        "Föreslagen regel är att ett konto som inte har använts på 24 månader får avslutas efter e-postmeddelande och minst 30 dagars möjlighet att behålla kontot. [BESLUT KRÄVS: godkänn regeln och fastställ vad som sker om tjänsten avvecklas.]",
       ],
     },
     {
@@ -158,7 +161,7 @@ export const termsDocument: LegalDocument = {
     {
       heading: "Kontakt och avtalspart",
       paragraphs: [
-        "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS], kontakt [E-POSTADRESS].",
+        "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS]. Kontakt: fameko.pilot@gmail.com.",
       ],
     },
   ],

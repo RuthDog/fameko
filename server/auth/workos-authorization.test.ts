@@ -8,7 +8,10 @@ import { unstable_splitSqlQuery } from "wrangler";
 import { provisionWorkosAccountAfterVerifiedCallback } from "../identity/first-login-provisioning.ts";
 import { authorizeRequest } from "./authorize-request.ts";
 
-const migrationUrl = new URL("../../migrations/0001_identity_foundation.sql", import.meta.url);
+const migrationUrls = [
+  new URL("../../migrations/0001_identity_foundation.sql", import.meta.url),
+  new URL("../../migrations/0002_account_data_control.sql", import.meta.url),
+];
 const environment = {
   FAMEKO_AUTH_MODE: "workos_staging",
   NEXT_PUBLIC_WORKOS_REDIRECT_URI: "https://auth-staging.example.test/auth/callback",
@@ -28,13 +31,15 @@ async function createDatabase() {
     }),
   );
   const database = await miniflare.getD1Database("FAMEKO_DB");
-  const migration = await readFile(migrationUrl, "utf8");
-  await database.batch(
-    unstable_splitSqlQuery(migration)
-      .map((statement) => statement.trim())
-      .filter(Boolean)
-      .map((statement) => database.prepare(statement)),
-  );
+  for (const migrationUrl of migrationUrls) {
+    const migration = await readFile(migrationUrl, "utf8");
+    await database.batch(
+      unstable_splitSqlQuery(migration)
+        .map((statement) => statement.trim())
+        .filter(Boolean)
+        .map((statement) => database.prepare(statement)),
+    );
+  }
   return { database, miniflare };
 }
 
@@ -64,11 +69,19 @@ test("WorkOS requests resolve only identities provisioned by a verified callback
   };
 
   try {
-    const provisioned = await provisionWorkosAccountAfterVerifiedCallback(database, {
-      provider: "workos",
-      providerSubject: user.id,
-      verifiedEmail: user.email,
-    });
+    const provisioned = await provisionWorkosAccountAfterVerifiedCallback(
+      database,
+      {
+        provider: "workos",
+        providerSubject: user.id,
+        verifiedEmail: user.email,
+      },
+      {
+        acceptedAt: "2026-11-01T10:00:00.000Z",
+        privacyVersion: "privacy-1.0-draft",
+        termsVersion: "terms-1.0-draft",
+      },
+    );
     const authorized = await authorizeRequest(
       new Request("https://auth-staging.example.test/app"),
       { database, environment, workosUserResolver: async () => user },

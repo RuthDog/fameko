@@ -13,7 +13,7 @@ import { verifiedAuthContextFromWorkosUser } from "../../../server/auth/workos-a
 import {
   mayProvisionWorkosIdentity,
   registrationAttestationCookieName,
-  validateRegistrationCallbackAttestation,
+  validateRegistrationCallbackAttestationDetails,
 } from "../../../server/auth/registration.ts";
 import { assertWorkosStagingEmailAllowed } from "../../../server/auth/auth-mode.ts";
 import {
@@ -50,24 +50,25 @@ const workosCallback = handleAuth({
       );
       step = "callback_attestation";
       const cookieStore = await cookies();
-      const attestationValidation = await validateRegistrationCallbackAttestation(
+      const attestationValidation = await validateRegistrationCallbackAttestationDetails(
         state,
         cookieStore.get(registrationAttestationCookieName)?.value,
         process.env,
       );
       if (!mayProvisionWorkosIdentity(
         Boolean(existingIdentity),
-        attestationValidation === "valid",
+        attestationValidation.result === "valid",
       )) {
-        if (attestationValidation === "valid") {
+        if (attestationValidation.result === "valid") {
           throw new AuthFlowFailure("callback_attestation");
         }
-        throw new AuthFlowFailure("callback_attestation", attestationValidation);
+        throw new AuthFlowFailure("callback_attestation", attestationValidation.result);
       }
       step = "callback_provisioning";
       await provisionWorkosAccountAfterVerifiedCallback(
         database,
         authContext,
+        attestationValidation.acceptance,
       );
       step = "callback_cleanup";
       await clearRegistrationAttestation();

@@ -22,6 +22,17 @@ export type RegistrationAttestationValidationResult =
   | "valid"
   | "wrong_phase";
 
+export type VerifiedLegalAcceptance = {
+  acceptedAt: string;
+  privacyVersion: typeof currentPrivacyDocumentVersion;
+  termsVersion: typeof currentTermsDocumentVersion;
+};
+
+export type RegistrationCallbackAttestationValidation = {
+  acceptance?: VerifiedLegalAcceptance;
+  result: RegistrationAttestationValidationResult;
+};
+
 type RegistrationAttestationPayload = {
   expiresAt: number;
   intent: RegistrationIntent;
@@ -232,8 +243,22 @@ export async function validateRegistrationCallbackAttestation(
   environment: AuthEnvironment,
   now = Date.now(),
 ): Promise<RegistrationAttestationValidationResult> {
+  return (await validateRegistrationCallbackAttestationDetails(
+    callbackState,
+    cookieValue,
+    environment,
+    now,
+  )).result;
+}
+
+export async function validateRegistrationCallbackAttestationDetails(
+  callbackState: string | undefined,
+  cookieValue: string | undefined,
+  environment: AuthEnvironment,
+  now = Date.now(),
+): Promise<RegistrationCallbackAttestationValidation> {
   if (!callbackState) {
-    return "missing";
+    return { result: "missing" };
   }
   if (!cookieValue) {
     const stateValidation = await verifyToken(
@@ -242,17 +267,30 @@ export async function validateRegistrationCallbackAttestation(
       environment,
       epochSeconds(now),
     );
-    return stateValidation.result === "valid" ? "missing" : stateValidation.result;
+    return {
+      result: stateValidation.result === "valid" ? "missing" : stateValidation.result,
+    };
   }
   if (callbackState !== cookieValue) {
-    return "state_mismatch";
+    return { result: "state_mismatch" };
   }
-  return (await verifyToken(
+  const verified = await verifyToken(
     callbackState,
     "started",
     environment,
     epochSeconds(now),
-  )).result;
+  );
+  if (verified.result !== "valid") {
+    return { result: verified.result };
+  }
+  return {
+    acceptance: {
+      acceptedAt: new Date(verified.payload.issuedAt * 1000).toISOString(),
+      privacyVersion: verified.payload.privacyVersion,
+      termsVersion: verified.payload.termsVersion,
+    },
+    result: "valid",
+  };
 }
 
 export async function verifyRegistrationCallbackAttestation(
