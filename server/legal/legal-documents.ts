@@ -26,12 +26,6 @@ export const privacyDocument: LegalDocument = {
     "Detta arbetsutkast beskriver hur Fameko avser att behandla personuppgifter. Uppgifterna inom hakparenteser och markerade beslut måste fastställas innan dokumentet får användas för en publik lansering.",
   sections: [
     {
-      heading: "Personuppgiftsansvarig",
-      paragraphs: [
-        "Fameko drivs av [FULLSTÄNDIGT NAMN], [POSTADRESS]. Kontakt för integritetsfrågor: [E-POSTADRESS]. Produktägaren är personuppgiftsansvarig för den behandling som beskrivs här.",
-      ],
-    },
-    {
       heading: "Vilka uppgifter Fameko behandlar",
       paragraphs: [
         "För konto och inloggning behandlas e-postadress, verifieringsstatus, WorkOS användar-ID, interna användar- och hushålls-ID samt nödvändig sessions- och säkerhetsinformation.",
@@ -92,6 +86,12 @@ export const privacyDocument: LegalDocument = {
       paragraphs: [
         "Fameko är avsett för personer som har fyllt 18 år. Tjänsten använder tekniska och organisatoriska skydd men kan inte lämna absoluta garantier.",
         "Väsentliga ändringar ska beskrivas tydligt med ny version och beslutsdatum innan de börjar gälla.",
+      ],
+    },
+    {
+      heading: "Kontakt och personuppgiftsansvarig",
+      paragraphs: [
+        "Fameko är ett fristående projekt som drivs av en privatperson. För frågor om tjänsten och hur personuppgifter hanteras kan du kontakta fameko.pilot@gmail.com. Personuppgiftsansvarig är [FULLSTÄNDIGT NAMN].",
       ],
     },
   ],

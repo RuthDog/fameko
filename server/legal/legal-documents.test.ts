@@ -27,6 +27,27 @@ test("draft legal documents remain visibly incomplete and versioned", async () =
   assert.doesNotMatch(combined, /samtycker till behandling av (alla )?personuppgifter/i);
 });
 
+test("privacy sections keep the approved order and end with controller contact", () => {
+  assert.deepEqual(
+    privacyDocument.sections.map((section) => section.heading),
+    [
+      "Vilka uppgifter Fameko behandlar",
+      "Varför uppgifterna behandlas",
+      "Frivillighet och dataminimering",
+      "Leverantörer och mottagare",
+      "Behandling utanför EU/EES",
+      "Lagringstid och radering",
+      "Cookies och lagring i webbläsaren",
+      "Dina rättigheter",
+      "Ålder, säkerhet och ändringar",
+      "Kontakt och personuppgiftsansvarig",
+    ],
+  );
+  assert.deepEqual(privacyDocument.sections.at(-1)?.paragraphs, [
+    "Fameko är ett fristående projekt som drivs av en privatperson. För frågor om tjänsten och hur personuppgifter hanteras kan du kontakta fameko.pilot@gmail.com. Personuppgiftsansvarig är [FULLSTÄNDIGT NAMN].",
+  ]);
+});
+
 test("privacy and terms routes use the shared mobile legal-document presentation", async () => {
   const [privacyPage, termsPage, legalPage] = await Promise.all([
     readFile(privacyPageUrl, "utf8"),
