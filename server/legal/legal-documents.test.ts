@@ -48,6 +48,30 @@ test("privacy sections keep the approved order and end with controller contact",
   ]);
 });
 
+test("terms sections keep the approved order and end with contracting-party contact", () => {
+  assert.deepEqual(
+    termsDocument.sections.map((section) => section.heading),
+    [
+      "Om Fameko",
+      "Behörighet och konto",
+      "Frivilliga uppgifter och ditt ansvar",
+      "Inte finansiell rådgivning",
+      "Tillåten användning",
+      "Tillgänglighet och förändringar",
+      "Dina data, export och avslut",
+      "Ansvar och tvist",
+      "Kontakt och avtalspart",
+    ],
+  );
+  assert.equal(
+    termsDocument.sections[0]?.paragraphs[0],
+    "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
+  );
+  assert.deepEqual(termsDocument.sections.at(-1)?.paragraphs, [
+    "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS], kontakt [E-POSTADRESS].",
+  ]);
+});
+
 test("privacy and terms routes use the shared mobile legal-document presentation", async () => {
   const [privacyPage, termsPage, legalPage] = await Promise.all([
     readFile(privacyPageUrl, "utf8"),

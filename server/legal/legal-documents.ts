@@ -106,9 +106,9 @@ export const termsDocument: LegalDocument = {
     "Detta är ett arbetsutkast till Famekos användarvillkor. Platshållare och markerade beslut måste fastställas innan villkoren kan godkännas för publik användning.",
   sections: [
     {
-      heading: "Avtalspart och tjänst",
+      heading: "Om Fameko",
       paragraphs: [
-        "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS], kontakt [E-POSTADRESS]. Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
+        "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
         "[BESLUT KRÄVS: tjänsten är kostnadsfri pilot, kostnadsfri tjänst eller betald tjänst. Pris, betalningsvillkor, uppsägning och eventuell ångerrätt ska anges innan publik lansering.]",
       ],
     },
@@ -153,6 +153,12 @@ export const termsDocument: LegalDocument = {
       heading: "Ansvar och tvist",
       paragraphs: [
         "[JURIDISK GRANSKNING KRÄVS: skälig ansvarsbegränsning, svensk lag, behörig domstol och information om Allmänna reklamationsnämnden.]",
+      ],
+    },
+    {
+      heading: "Kontakt och avtalspart",
+      paragraphs: [
+        "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS], kontakt [E-POSTADRESS].",
       ],
     },
   ],
