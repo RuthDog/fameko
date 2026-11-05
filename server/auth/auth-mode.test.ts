@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   AuthConfigurationError,
+  WorkosEmailNotAllowedError,
+  assertWorkosStagingEmailAllowed,
   cloudflareAccessAuthMode,
   getAuthMode,
   validateWorkosConfiguration,
@@ -81,6 +83,59 @@ test("WorkOS mode requires complete secrets and a safe callback URL", () => {
           "https://auth-staging.example.test/auth/callback?untrusted=1",
       }),
     AuthConfigurationError,
+  );
+});
+
+test("WorkOS staging allowlist accepts exactly two or three unique normalized addresses", () => {
+  const twoAllowedEmails = "allowed-a@example.test, Allowed-B@Example.Test ";
+  const threeAllowedEmails = `${twoAllowedEmails},allowed-c@example.test`;
+
+  assert.doesNotThrow(() =>
+    validateWorkosConfiguration({
+      ...workosEnvironment,
+      WORKOS_STAGING_ALLOWED_EMAILS: twoAllowedEmails,
+    }),
+  );
+  assert.doesNotThrow(() =>
+    validateWorkosConfiguration({
+      ...workosEnvironment,
+      WORKOS_STAGING_ALLOWED_EMAILS: threeAllowedEmails,
+    }),
+  );
+  assert.doesNotThrow(() =>
+    assertWorkosStagingEmailAllowed(" ALLOWED-C@EXAMPLE.TEST ", {
+      WORKOS_STAGING_ALLOWED_EMAILS: threeAllowedEmails,
+    }),
+  );
+});
+
+test("WorkOS staging allowlist fails closed for invalid, duplicate or oversized lists", () => {
+  for (const allowedEmails of [
+    "",
+    "allowed-a@example.test",
+    "not-an-email,allowed-b@example.test",
+    "allowed-a@example.test,Allowed-A@Example.Test",
+    "allowed-a@example.test,allowed-b@example.test,allowed-c@example.test,allowed-d@example.test",
+  ]) {
+    assert.throws(
+      () =>
+        validateWorkosConfiguration({
+          ...workosEnvironment,
+          WORKOS_STAGING_ALLOWED_EMAILS: allowedEmails,
+        }),
+      AuthConfigurationError,
+    );
+  }
+});
+
+test("WorkOS staging allowlist denies an address that is not explicitly listed", () => {
+  assert.throws(
+    () =>
+      assertWorkosStagingEmailAllowed("not-allowed@example.test", {
+        WORKOS_STAGING_ALLOWED_EMAILS:
+          "allowed-a@example.test,allowed-b@example.test,allowed-c@example.test",
+      }),
+    WorkosEmailNotAllowedError,
   );
 });
 

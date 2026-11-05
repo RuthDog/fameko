@@ -36,8 +36,9 @@ function workosStagingAllowedEmails(environment: AuthEnvironment): Set<string> {
   const unique = new Set(values);
 
   if (
-    values.length !== 2 ||
-    unique.size !== 2 ||
+    values.length < 2 ||
+    values.length > 3 ||
+    unique.size !== values.length ||
     values.some(
       (value) =>
         !value ||
