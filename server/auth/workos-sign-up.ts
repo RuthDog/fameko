@@ -1,7 +1,7 @@
 import {
   isSameOriginFormRequest,
   publicAuthUnavailableResponse,
-  publicWorkosAuthGate,
+  publicWorkosRegistrationGate,
 } from "./public-auth-http.ts";
 import {
   issueRegistrationAttestation,
@@ -59,7 +59,7 @@ export async function acceptWorkosSignUp(
   request: Request,
   environment: Record<string, string | undefined>,
 ): Promise<Response> {
-  const gate = publicWorkosAuthGate(environment);
+  const gate = publicWorkosRegistrationGate(environment);
   if (!gate.ok) {
     return publicAuthUnavailableResponse(gate.status);
   }
@@ -107,7 +107,7 @@ export async function continueWorkosSignUp(
   environment: Record<string, string | undefined>,
   factories: WorkosRegistrationUrlFactories,
 ): Promise<Response> {
-  const gate = publicWorkosAuthGate(environment);
+  const gate = publicWorkosRegistrationGate(environment);
   if (!gate.ok) {
     return publicAuthUnavailableResponse(gate.status);
   }

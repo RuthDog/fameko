@@ -8,9 +8,15 @@ import {
   cloudflareAccessAuthMode,
   getAuthMode,
   validateWorkosConfiguration,
+  workosProductionAuthMode,
+  workosProductionTransitionAuthMode,
   workosStagingAuthMode,
 } from "./auth-mode.ts";
-import { isSameOriginFormRequest, publicWorkosAuthGate } from "./public-auth-http.ts";
+import {
+  isSameOriginFormRequest,
+  publicWorkosAuthGate,
+  publicWorkosRegistrationGate,
+} from "./public-auth-http.ts";
 
 const workosEnvironment = {
   FAMEKO_AUTH_MODE: workosStagingAuthMode,
@@ -22,6 +28,14 @@ const workosEnvironment = {
   WORKOS_STAGING_ALLOWED_EMAILS: "allowed-a@example.test,allowed-b@example.test",
 };
 const trustedPublicOrigin = "https://auth-staging.example.test";
+const productionEnvironment = {
+  FAMEKO_AUTH_MODE: workosProductionAuthMode,
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: "https://fameko.example.test/auth/callback",
+  WORKOS_API_KEY: "production-test-api-key",
+  WORKOS_CLIENT_ID: "client_prod_test",
+  WORKOS_COOKIE_PASSWORD: "p".repeat(32),
+  WORKOS_ISSUER: "https://api.workos.com/user_management/client_prod_test",
+};
 
 test("auth mode is explicit and unknown or missing values fail closed", () => {
   assert.equal(
@@ -29,8 +43,49 @@ test("auth mode is explicit and unknown or missing values fail closed", () => {
     cloudflareAccessAuthMode,
   );
   assert.equal(getAuthMode(workosEnvironment), workosStagingAuthMode);
+  assert.equal(
+    getAuthMode({ FAMEKO_AUTH_MODE: workosProductionTransitionAuthMode }),
+    workosProductionTransitionAuthMode,
+  );
+  assert.equal(getAuthMode(productionEnvironment), workosProductionAuthMode);
   assert.throws(() => getAuthMode({}), AuthConfigurationError);
   assert.throws(() => getAuthMode({ FAMEKO_AUTH_MODE: "workos" }), AuthConfigurationError);
+});
+
+test("production WorkOS requires an exact configured client issuer without staging allowlist", () => {
+  assert.deepEqual(validateWorkosConfiguration(productionEnvironment), {
+    publicOrigin: "https://fameko.example.test",
+    redirectUri: "https://fameko.example.test/auth/callback",
+  });
+  assert.throws(
+    () => validateWorkosConfiguration({ ...productionEnvironment, WORKOS_ISSUER: "https://api.workos.com/" }),
+    AuthConfigurationError,
+  );
+  assert.throws(
+    () => validateWorkosConfiguration({
+      ...productionEnvironment,
+      WORKOS_ISSUER: "https://api.workos.com/user_management/client_other",
+    }),
+    AuthConfigurationError,
+  );
+});
+
+test("production registration is fail-closed until explicitly enabled", () => {
+  assert.deepEqual(publicWorkosAuthGate(productionEnvironment), {
+    ok: true,
+    publicOrigin: "https://fameko.example.test",
+  });
+  assert.deepEqual(publicWorkosRegistrationGate(productionEnvironment), {
+    ok: false,
+    status: 404,
+  });
+  assert.deepEqual(
+    publicWorkosRegistrationGate({
+      ...productionEnvironment,
+      FAMEKO_PUBLIC_REGISTRATION: "enabled",
+    }),
+    { ok: true, publicOrigin: "https://fameko.example.test" },
+  );
 });
 
 test("WorkOS mode requires complete secrets and a safe callback URL", () => {

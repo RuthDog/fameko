@@ -15,7 +15,16 @@ import {
   registrationAttestationCookieName,
   validateRegistrationCallbackAttestationDetails,
 } from "../../../server/auth/registration.ts";
-import { assertWorkosStagingEmailAllowed } from "../../../server/auth/auth-mode.ts";
+import {
+  assertWorkosStagingEmailAllowed,
+  getAuthMode,
+  isPublicRegistrationEnabled,
+  workosStagingAuthMode,
+} from "../../../server/auth/auth-mode.ts";
+import {
+  accountLinkStateCookieName,
+} from "../../../server/auth/account-link-state.ts";
+import { bindAccountLinkCallback } from "../../../server/auth/account-link-http.ts";
 import {
   AuthFlowFailure,
   authErrorUrl,
@@ -35,50 +44,90 @@ async function clearRegistrationAttestation(): Promise<void> {
   });
 }
 
+async function clearAccountLinkState(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(accountLinkStateCookieName, "", {
+    expires: new Date(0),
+    httpOnly: true,
+    maxAge: 0,
+    path: "/",
+    sameSite: "lax",
+    secure: true,
+  });
+}
+
 const workosCallback = handleAuth({
   returnPathname: "/app",
   onSuccess: async ({ state, user }) => {
     let step: AuthFailureStep = "callback_identity";
     try {
       const authContext = verifiedAuthContextFromWorkosUser(user);
-      step = "callback_allowlist";
-      assertWorkosStagingEmailAllowed(authContext.verifiedEmail, process.env);
+      const mode = getAuthMode(process.env);
+      if (mode === workosStagingAuthMode) {
+        step = "callback_allowlist";
+        assertWorkosStagingEmailAllowed(authContext.verifiedEmail, process.env);
+      }
       const database = await getFamekoDatabase();
       const existingIdentity = await new IdentityRepository(database).findAuthIdentity(
         authContext.provider,
         authContext.providerSubject,
       );
-      step = "callback_attestation";
       const cookieStore = await cookies();
+      const accountLinkCookie = cookieStore.get(accountLinkStateCookieName)?.value;
+      if (mode !== workosStagingAuthMode && accountLinkCookie) {
+        step = "callback_attestation";
+        await bindAccountLinkCallback(
+          state,
+          accountLinkCookie,
+          user,
+          database,
+          process.env,
+        );
+        return;
+      }
+
+      step = "callback_attestation";
       const attestationValidation = await validateRegistrationCallbackAttestationDetails(
         state,
         cookieStore.get(registrationAttestationCookieName)?.value,
         process.env,
       );
-      if (!mayProvisionWorkosIdentity(
-        Boolean(existingIdentity),
-        attestationValidation.result === "valid",
-      )) {
+      const registrationAllowed = mode === workosStagingAuthMode
+        || isPublicRegistrationEnabled(process.env);
+      if (
+        !existingIdentity
+        && (
+          !registrationAllowed
+          || !mayProvisionWorkosIdentity(
+            false,
+            attestationValidation.result === "valid",
+          )
+        )
+      ) {
         if (attestationValidation.result === "valid") {
           throw new AuthFlowFailure("callback_attestation");
         }
         throw new AuthFlowFailure("callback_attestation", attestationValidation.result);
       }
       step = "callback_provisioning";
-      await provisionWorkosAccountAfterVerifiedCallback(
-        database,
-        authContext,
-        attestationValidation.acceptance,
-      );
+      if (!existingIdentity) {
+        await provisionWorkosAccountAfterVerifiedCallback(
+          database,
+          authContext,
+          attestationValidation.acceptance,
+        );
+      }
       step = "callback_cleanup";
       await clearRegistrationAttestation();
     } catch (error) {
       await clearRegistrationAttestation();
+      await clearAccountLinkState();
       throw error instanceof AuthFlowFailure ? error : new AuthFlowFailure(step);
     }
   },
   onError: async ({ error, request }) => {
     await clearRegistrationAttestation();
+    await clearAccountLinkState();
     const failure = error instanceof AuthFlowFailure
       ? error
       : new AuthFlowFailure("callback_exchange");

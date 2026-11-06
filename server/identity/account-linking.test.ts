@@ -22,6 +22,8 @@ const grant: VerifiedAccountLinkGrant = {
   existingUserId: "internal-user-id",
   expiresAt: "2030-01-01T00:00:00.000Z",
   id: "one-time-grant-id",
+  revokedAt: null,
+  stateHash: "state-hash",
   sourceProvider: source.provider,
   sourceProviderSubject: source.providerSubject,
   targetProvider: target.provider,

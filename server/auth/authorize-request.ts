@@ -6,8 +6,11 @@ import {
   assertWorkosStagingEmailAllowed,
   cloudflareAccessAuthMode,
   getAuthMode,
+  isWorkosAuthMode,
   validateCloudflareAccessConfiguration,
   validateWorkosConfiguration,
+  workosProductionAuthMode,
+  workosProductionTransitionAuthMode,
   workosStagingAuthMode,
 } from "./auth-mode.ts";
 import { getLocalDevelopmentAuthContext } from "./development-auth.ts";
@@ -52,6 +55,88 @@ type AuthorizeRequestOptions = {
   workosUserResolver?: () => Promise<VerifiedWorkosUser | null>;
 };
 
+type ExistingAccessAuthorization =
+  | { authContext: ReturnType<typeof verifiedAuthContextFromAccessClaims>; context: AuthorizedPilotContext; ok: true }
+  | { code: AuthorizationFailureCode; ok: false };
+
+export async function authorizeExistingAccessRequest(
+  request: Request,
+  options: Pick<AuthorizeRequestOptions, "database" | "environment"> = {},
+): Promise<ExistingAccessAuthorization> {
+  const environment = options.environment ?? process.env;
+  const token = request.headers.get("cf-access-jwt-assertion");
+  if (!token) {
+    return { code: "token_missing", ok: false };
+  }
+  try {
+    validateCloudflareAccessConfiguration(environment);
+    const claims = await verifyAccessToken(
+      token,
+      environment.CF_ACCESS_TEAM_DOMAIN as string,
+      environment.CF_ACCESS_AUD as string,
+    );
+    const authContext = verifiedAuthContextFromAccessClaims(claims);
+    const database = options.database ?? (await getFamekoDatabase());
+    const context = await resolveAuthorizedIdentity(
+      new IdentityRepository(database),
+      authContext,
+    );
+    return { authContext, context, ok: true };
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) {
+      return { code: "configuration_missing", ok: false };
+    }
+    if (error instanceof AccessTokenError) {
+      return { code: "token_invalid", ok: false };
+    }
+    if (error instanceof IdentityAuthorizationError) {
+      return { code: error.code, ok: false };
+    }
+    if (error instanceof DatabaseUnavailableError) {
+      return { code: "database_unavailable", ok: false };
+    }
+    return { code: "database_unavailable", ok: false };
+  }
+}
+
+async function authorizeWorkosIdentity(
+  environment: Record<string, string | undefined>,
+  options: AuthorizeRequestOptions,
+  enforceStagingAllowlist: boolean,
+): Promise<AuthorizationResult> {
+  try {
+    validateWorkosConfiguration(environment);
+    const user = await (options.workosUserResolver ?? getVerifiedWorkosSessionUser)();
+    if (!user) {
+      return { code: "token_missing", ok: false };
+    }
+    const authContext = verifiedAuthContextFromWorkosUser(user);
+    if (enforceStagingAllowlist) {
+      assertWorkosStagingEmailAllowed(authContext.verifiedEmail, environment);
+    }
+    const database = options.database ?? (await getFamekoDatabase());
+    const context = await resolveAuthorizedIdentity(
+      new IdentityRepository(database),
+      authContext,
+    );
+    return { context, mode: "workos", ok: true };
+  } catch (error) {
+    if (error instanceof AuthConfigurationError) {
+      return { code: "configuration_missing", ok: false };
+    }
+    if (error instanceof IdentityAuthorizationError) {
+      return { code: error.code, ok: false };
+    }
+    if (error instanceof WorkosEmailNotAllowedError) {
+      return { code: "identity_missing", ok: false };
+    }
+    if (error instanceof DatabaseUnavailableError) {
+      return { code: "database_unavailable", ok: false };
+    }
+    return { code: "token_invalid", ok: false };
+  }
+}
+
 export async function authorizeRequest(
   request: Request,
   options: AuthorizeRequestOptions = {},
@@ -74,42 +159,41 @@ export async function authorizeRequest(
   }
 
   if (authMode === workosStagingAuthMode) {
-    try {
-      validateWorkosConfiguration(environment);
-      const user = await (options.workosUserResolver ?? getVerifiedWorkosSessionUser)();
-      if (!user) {
-        return { code: "token_missing", ok: false };
-      }
-
-      const authContext = verifiedAuthContextFromWorkosUser(user);
-      assertWorkosStagingEmailAllowed(authContext.verifiedEmail, environment);
-      const database = options.database ?? (await getFamekoDatabase());
-      const context = await resolveAuthorizedIdentity(
-        new IdentityRepository(database),
-        authContext,
-      );
-      return { context, mode: "workos", ok: true };
-    } catch (error) {
-      if (error instanceof AuthConfigurationError) {
-        return { code: "configuration_missing", ok: false };
-      }
-      if (error instanceof IdentityAuthorizationError) {
-        return { code: error.code, ok: false };
-      }
-      if (error instanceof WorkosEmailNotAllowedError) {
-        return { code: "identity_missing", ok: false };
-      }
-      if (error instanceof DatabaseUnavailableError) {
-        return { code: "database_unavailable", ok: false };
-      }
-      if (error instanceof TypeError) {
-        return { code: "token_invalid", ok: false };
-      }
-      return { code: "token_invalid", ok: false };
-    }
+    return authorizeWorkosIdentity(environment, options, true);
   }
 
-  if (authMode !== cloudflareAccessAuthMode) {
+  if (authMode === workosProductionAuthMode) {
+    return authorizeWorkosIdentity(environment, options, false);
+  }
+
+  if (authMode === workosProductionTransitionAuthMode) {
+    try {
+      validateWorkosConfiguration(environment);
+      validateCloudflareAccessConfiguration(environment);
+    } catch {
+      return { code: "configuration_missing", ok: false };
+    }
+    const workos = await authorizeWorkosIdentity(environment, options, false);
+    if (workos.ok) {
+      return workos;
+    }
+    if (
+      workos.code !== "token_missing"
+      && workos.code !== "identity_missing"
+      && workos.code !== "token_invalid"
+    ) {
+      return workos;
+    }
+    const access = await authorizeExistingAccessRequest(request, {
+      database: options.database,
+      environment,
+    });
+    return access.ok
+      ? { context: access.context, mode: "access", ok: true }
+      : access;
+  }
+
+  if (authMode !== cloudflareAccessAuthMode || isWorkosAuthMode(authMode)) {
     return { code: "configuration_missing", ok: false };
   }
 

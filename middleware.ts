@@ -13,8 +13,9 @@ import {
 import {
   AuthConfigurationError,
   getAuthMode,
+  isWorkosAuthMode,
   validateWorkosConfiguration,
-  workosStagingAuthMode,
+  workosProductionTransitionAuthMode,
 } from "./server/auth/auth-mode.ts";
 
 type ErrorPresentation = {
@@ -142,7 +143,10 @@ function authorizedResponse(
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
-async function workosMiddleware(request: NextRequest): Promise<NextResponse> {
+async function workosMiddleware(
+  request: NextRequest,
+  allowAccessFallback: boolean,
+): Promise<NextResponse> {
   let redirectUri: string;
   try {
     ({ redirectUri } = validateWorkosConfiguration(process.env));
@@ -161,6 +165,14 @@ async function workosMiddleware(request: NextRequest): Promise<NextResponse> {
       },
     });
   } catch {
+    if (allowAccessFallback) {
+      const fallback = await authorizeRequest(request, {
+        workosUserResolver: async () => null,
+      });
+      return fallback.ok
+        ? authorizedResponse(new Headers(request.headers), fallback)
+        : errorPage(errorPresentations[fallback.code]);
+    }
     return errorPage(errorPresentations.token_invalid);
   }
 
@@ -173,6 +185,24 @@ async function workosMiddleware(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!authkitResult.session.user) {
+    if (allowAccessFallback) {
+      const authorization = await authorizeRequest(request, {
+        workosUserResolver: async () => null,
+      });
+      const { requestHeaders, responseHeaders } = partitionAuthkitHeaders(
+        request,
+        authkitResult.headers,
+      );
+      return authorization.ok
+        ? applyResponseHeaders(
+            authorizedResponse(requestHeaders, authorization),
+            responseHeaders,
+          )
+        : applyResponseHeaders(
+            errorPage(errorPresentations[authorization.code]),
+            responseHeaders,
+          );
+    }
     return handleAuthkitProxy(request, authkitResult.headers, {
       redirect: "/sign-in",
     });
@@ -201,8 +231,12 @@ async function workosMiddleware(request: NextRequest): Promise<NextResponse> {
 
 export async function middleware(request: NextRequest) {
   try {
-    if (getAuthMode(process.env) === workosStagingAuthMode) {
-      return workosMiddleware(request);
+    const mode = getAuthMode(process.env);
+    if (isWorkosAuthMode(mode)) {
+      return workosMiddleware(
+        request,
+        mode === workosProductionTransitionAuthMode,
+      );
     }
   } catch (error) {
     if (!(error instanceof AuthConfigurationError)) {

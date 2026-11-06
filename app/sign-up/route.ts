@@ -1,6 +1,6 @@
 import {
   publicAuthUnavailableResponse,
-  publicWorkosAuthGate,
+  publicWorkosRegistrationGate,
 } from "../../server/auth/public-auth-http.ts";
 import { acceptWorkosSignUp } from "../../server/auth/workos-sign-up.ts";
 import {
@@ -84,7 +84,7 @@ function registrationPage(request: Request): Response {
 }
 
 export function GET(request: Request) {
-  const gate = publicWorkosAuthGate(process.env);
+  const gate = publicWorkosRegistrationGate(process.env);
   if (!gate.ok) {
     return publicAuthUnavailableResponse(gate.status);
   }

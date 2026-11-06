@@ -98,6 +98,46 @@ test("authorize-request uses verified Access identity and D1 as one fail-closed 
       assert.equal(authorized.context.household.id, provisioned.householdId);
     }
 
+    const transitionEnvironment = {
+      ...environment,
+      FAMEKO_AUTH_MODE: "workos_production_transition",
+      NEXT_PUBLIC_WORKOS_REDIRECT_URI: "https://fameko.se/auth/callback",
+      WORKOS_API_KEY: "test-api-key",
+      WORKOS_CLIENT_ID: "client_prod_test",
+      WORKOS_COOKIE_PASSWORD: "x".repeat(32),
+      WORKOS_ISSUER: "https://api.workos.com/user_management/client_prod_test",
+    };
+    const transitionAuthorized = await authorizeRequest(
+      new Request("https://fameko.se/app", {
+        headers: { "Cf-Access-Jwt-Assertion": knownToken },
+      }),
+      {
+        database,
+        environment: transitionEnvironment,
+        workosUserResolver: async () => null,
+      },
+    );
+    assert.equal(transitionAuthorized.ok, true);
+    if (transitionAuthorized.ok) {
+      assert.equal(transitionAuthorized.mode, "access");
+      assert.equal(transitionAuthorized.context.user.id, provisioned.userId);
+    }
+
+    const transitionUnknownToken = await createToken(pair.privateKey, "transition-unknown");
+    assert.deepEqual(
+      await authorizeRequest(
+        new Request("https://fameko.se/app", {
+          headers: { "Cf-Access-Jwt-Assertion": transitionUnknownToken },
+        }),
+        {
+          database,
+          environment: transitionEnvironment,
+          workosUserResolver: async () => null,
+        },
+      ),
+      { code: "identity_missing", ok: false },
+    );
+
     const unknownToken = await createToken(pair.privateKey, "unknown-subject");
     const unknown = await authorizeRequest(
       new Request("https://fameko.se/app", {

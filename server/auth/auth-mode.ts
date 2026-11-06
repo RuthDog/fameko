@@ -1,9 +1,13 @@
 export const cloudflareAccessAuthMode = "cloudflare_access";
 export const workosStagingAuthMode = "workos_staging";
+export const workosProductionTransitionAuthMode = "workos_production_transition";
+export const workosProductionAuthMode = "workos_production";
 
 export type AuthMode =
   | typeof cloudflareAccessAuthMode
-  | typeof workosStagingAuthMode;
+  | typeof workosStagingAuthMode
+  | typeof workosProductionTransitionAuthMode
+  | typeof workosProductionAuthMode;
 
 export class AuthConfigurationError extends Error {
   constructor() {
@@ -64,10 +68,30 @@ export function assertWorkosStagingEmailAllowed(
 
 export function getAuthMode(environment: AuthEnvironment): AuthMode {
   const mode = required(environment, "FAMEKO_AUTH_MODE");
-  if (mode === cloudflareAccessAuthMode || mode === workosStagingAuthMode) {
+  if (
+    mode === cloudflareAccessAuthMode
+    || mode === workosStagingAuthMode
+    || mode === workosProductionTransitionAuthMode
+    || mode === workosProductionAuthMode
+  ) {
     return mode;
   }
   throw new AuthConfigurationError();
+}
+
+export function isWorkosAuthMode(mode: AuthMode): boolean {
+  return mode === workosStagingAuthMode
+    || mode === workosProductionTransitionAuthMode
+    || mode === workosProductionAuthMode;
+}
+
+export function isPublicRegistrationEnabled(environment: AuthEnvironment): boolean {
+  const mode = getAuthMode(environment);
+  if (mode === workosStagingAuthMode) {
+    return true;
+  }
+  return mode === workosProductionAuthMode
+    && environment.FAMEKO_PUBLIC_REGISTRATION?.trim() === "enabled";
 }
 
 export function validateCloudflareAccessConfiguration(
@@ -80,12 +104,18 @@ export function validateCloudflareAccessConfiguration(
 export function validateWorkosConfiguration(
   environment: AuthEnvironment,
 ): { publicOrigin: string; redirectUri: string } {
-  required(environment, "WORKOS_CLIENT_ID");
+  const clientId = required(environment, "WORKOS_CLIENT_ID");
   required(environment, "WORKOS_API_KEY");
   const cookiePassword = required(environment, "WORKOS_COOKIE_PASSWORD");
   const redirectUriValue = required(environment, "NEXT_PUBLIC_WORKOS_REDIRECT_URI");
   const issuerValue = required(environment, "WORKOS_ISSUER");
-  workosStagingAllowedEmails(environment);
+  const mode = getAuthMode(environment);
+  if (!isWorkosAuthMode(mode)) {
+    throw new AuthConfigurationError();
+  }
+  if (mode === workosStagingAuthMode) {
+    workosStagingAllowedEmails(environment);
+  }
 
   if (cookiePassword.length < 32) {
     throw new AuthConfigurationError();
@@ -115,9 +145,13 @@ export function validateWorkosConfiguration(
     throw new AuthConfigurationError();
   }
 
+  const validIssuerPath = mode === workosStagingAuthMode
+    ? issuer.pathname === "/"
+    : issuer.pathname === `/user_management/${clientId}`;
+
   if (
     issuer.protocol !== "https:" ||
-    issuer.pathname !== "/" ||
+    !validIssuerPath ||
     issuer.username ||
     issuer.password ||
     issuer.search ||
@@ -130,4 +164,14 @@ export function validateWorkosConfiguration(
     publicOrigin: redirectUri.origin,
     redirectUri: redirectUri.toString(),
   };
+}
+
+export function validateProductionTransitionConfiguration(
+  environment: AuthEnvironment,
+): { publicOrigin: string; redirectUri: string } {
+  if (getAuthMode(environment) !== workosProductionTransitionAuthMode) {
+    throw new AuthConfigurationError();
+  }
+  validateCloudflareAccessConfiguration(environment);
+  return validateWorkosConfiguration(environment);
 }

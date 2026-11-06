@@ -1,8 +1,9 @@
 import {
   AuthConfigurationError,
   getAuthMode,
+  isPublicRegistrationEnabled,
+  isWorkosAuthMode,
   validateWorkosConfiguration,
-  workosStagingAuthMode,
 } from "./auth-mode.ts";
 
 export type PublicAuthGate =
@@ -13,7 +14,7 @@ export function publicWorkosAuthGate(
   environment: Record<string, string | undefined>,
 ): PublicAuthGate {
   try {
-    if (getAuthMode(environment) !== workosStagingAuthMode) {
+    if (!isWorkosAuthMode(getAuthMode(environment))) {
       return { ok: false, status: 404 };
     }
     const { publicOrigin } = validateWorkosConfiguration(environment);
@@ -22,6 +23,22 @@ export function publicWorkosAuthGate(
     if (error instanceof AuthConfigurationError) {
       return { ok: false, status: 503 };
     }
+    return { ok: false, status: 503 };
+  }
+}
+
+export function publicWorkosRegistrationGate(
+  environment: Record<string, string | undefined>,
+): PublicAuthGate {
+  const gate = publicWorkosAuthGate(environment);
+  if (!gate.ok) {
+    return gate;
+  }
+  try {
+    return isPublicRegistrationEnabled(environment)
+      ? gate
+      : { ok: false, status: 404 };
+  } catch {
     return { ok: false, status: 503 };
   }
 }

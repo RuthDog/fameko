@@ -21,6 +21,14 @@ const environment = {
   WORKOS_ISSUER: "https://api.workos.com/",
   WORKOS_STAGING_ALLOWED_EMAILS: "adult@example.test,second-adult@example.test",
 };
+const productionEnvironment = {
+  FAMEKO_AUTH_MODE: "workos_production",
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: "https://fameko.example.test/auth/callback",
+  WORKOS_API_KEY: "test-api-key",
+  WORKOS_CLIENT_ID: "client_prod_test",
+  WORKOS_COOKIE_PASSWORD: "x".repeat(32),
+  WORKOS_ISSUER: "https://api.workos.com/user_management/client_prod_test",
+};
 
 async function createDatabase() {
   const miniflare = new Miniflare(
@@ -187,5 +195,66 @@ test("missing, unverified and misconfigured WorkOS sessions fail closed", async 
     );
   } finally {
     await miniflare.dispose();
+  }
+});
+
+test("WorkOS production authorizes only an already-linked subject and never provisions", async () => {
+  const { database, miniflare } = await createDatabase();
+  try {
+    const known = {
+      email: "production@example.test",
+      emailVerified: true,
+      id: "workos-production-known",
+    };
+    await provisionWorkosAccountAfterVerifiedCallback(
+      database,
+      {
+        provider: "workos",
+        providerSubject: known.id,
+        verifiedEmail: known.email,
+      },
+      {
+        acceptedAt: "2026-11-06T10:00:00.000Z",
+        privacyVersion: "privacy-1.0-draft",
+        termsVersion: "terms-1.0-draft",
+      },
+    );
+    const authorized = await authorizeRequest(
+      new Request("https://fameko.example.test/app"),
+      { database, environment: productionEnvironment, workosUserResolver: async () => known },
+    );
+    assert.equal(authorized.ok, true);
+    assert.deepEqual(
+      await authorizeRequest(new Request("https://fameko.example.test/app"), {
+        database,
+        environment: productionEnvironment,
+        workosUserResolver: async () => ({
+          email: "unknown@example.test",
+          emailVerified: true,
+          id: "workos-production-unknown",
+        }),
+      }),
+      { code: "identity_missing", ok: false },
+    );
+    assert.deepEqual(await counts(database), {
+      households: 1,
+      identities: 1,
+      planning_years: 1,
+      users: 1,
+    });
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("production and transition modes fail closed on incomplete configuration", async () => {
+  for (const mode of ["workos_production", "workos_production_transition"]) {
+    assert.deepEqual(
+      await authorizeRequest(new Request("https://fameko.example.test/app"), {
+        environment: { FAMEKO_AUTH_MODE: mode },
+        workosUserResolver: async () => null,
+      }),
+      { code: "configuration_missing", ok: false },
+    );
   }
 });
