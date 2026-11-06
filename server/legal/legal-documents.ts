@@ -96,7 +96,8 @@ export const privacyDocument: LegalDocument = {
     {
       heading: "Kontakt och personuppgiftsansvarig",
       paragraphs: [
-        "Fameko är ett fristående projekt som drivs av en privatperson. Personuppgiftsansvarig och kontakt för dataskyddsfrågor är [FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING], fameko.pilot@gmail.com.",
+        "Fameko är ett fristående projekt som drivs av Ola Fischer som privatperson. Ola Fischer är personuppgiftsansvarig för den behandling som beskrivs i denna policy.",
+        "För frågor om tjänsten eller hur personuppgifter hanteras, kontakta fameko.pilot@gmail.com.",
       ],
     },
   ],
@@ -167,7 +168,8 @@ export const termsDocument: LegalDocument = {
     {
       heading: "Kontakt och avtalspart",
       paragraphs: [
-        "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING], privatperson. Kontakt: fameko.pilot@gmail.com.",
+        "Fameko är ett fristående projekt som drivs av Ola Fischer. Tjänsten tillhandahålls kostnadsfritt.",
+        "För frågor om tjänsten och användarvillkoren, kontakta fameko.pilot@gmail.com.",
       ],
     },
   ],

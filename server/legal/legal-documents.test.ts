@@ -23,11 +23,11 @@ test("legal documents remain draft-versioned without internal editing notes", as
   assert.equal(termsDocument.effectiveDate, "Ej fastställt");
 
   const combined = JSON.stringify([privacyDocument, termsDocument]);
-  assert.match(combined, /\[FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING\]/);
+  assert.match(combined, /Ola Fischer/);
   assert.match(combined, /fameko\.pilot@gmail\.com/);
   assert.doesNotMatch(
     combined,
-    /\[E-POSTADRESS\]|KOMPLETTERA|BESLUT KRÄVS|JURIDISK GRANSKNING|\[POSTADRESS\]/,
+    /FULLSTÄNDIGT NAMN|\[E-POSTADRESS\]|KOMPLETTERA|BESLUT KRÄVS|JURIDISK GRANSKNING|POSTADRESS/,
   );
   assert.doesNotMatch(combined, /samtycker till behandling av (alla )?personuppgifter/i);
 });
@@ -74,7 +74,8 @@ test("privacy sections keep the approved order and end with controller contact",
     ],
   );
   assert.deepEqual(privacyDocument.sections.at(-1)?.paragraphs, [
-    "Fameko är ett fristående projekt som drivs av en privatperson. Personuppgiftsansvarig och kontakt för dataskyddsfrågor är [FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING], fameko.pilot@gmail.com.",
+    "Fameko är ett fristående projekt som drivs av Ola Fischer som privatperson. Ola Fischer är personuppgiftsansvarig för den behandling som beskrivs i denna policy.",
+    "För frågor om tjänsten eller hur personuppgifter hanteras, kontakta fameko.pilot@gmail.com.",
   ]);
 });
 
@@ -98,7 +99,8 @@ test("terms sections keep the approved order and end with contracting-party cont
     "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
   );
   assert.deepEqual(termsDocument.sections.at(-1)?.paragraphs, [
-    "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING], privatperson. Kontakt: fameko.pilot@gmail.com.",
+    "Fameko är ett fristående projekt som drivs av Ola Fischer. Tjänsten tillhandahålls kostnadsfritt.",
+    "För frågor om tjänsten och användarvillkoren, kontakta fameko.pilot@gmail.com.",
   ]);
 });
 
