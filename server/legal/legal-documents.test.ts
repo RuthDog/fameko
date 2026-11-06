@@ -14,34 +14,47 @@ const legalPageUrl = new URL("../../app/legal-document-page.tsx", import.meta.ur
 const authStagingConfigUrl = new URL("../../wrangler.auth-staging.jsonc", import.meta.url);
 const brandLogoUrl = new URL("../../app/components/brand-logo.tsx", import.meta.url);
 
-test("draft legal documents remain visibly incomplete and versioned", async () => {
+test("legal documents remain draft-versioned without internal editing notes", async () => {
   assert.equal(privacyDocument.version, currentPrivacyDocumentVersion);
   assert.equal(termsDocument.version, currentTermsDocumentVersion);
-  assert.match(privacyDocument.intro, /arbetsutkast/i);
-  assert.match(termsDocument.intro, /arbetsutkast/i);
+  assert.match(privacyDocument.version, /-draft$/);
+  assert.match(termsDocument.version, /-draft$/);
+  assert.equal(privacyDocument.effectiveDate, "Ej fastställt");
+  assert.equal(termsDocument.effectiveDate, "Ej fastställt");
 
   const combined = JSON.stringify([privacyDocument, termsDocument]);
-  assert.match(combined, /\[FULLSTÄNDIGT NAMN\]/);
+  assert.match(combined, /\[FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING\]/);
   assert.match(combined, /fameko\.pilot@gmail\.com/);
-  assert.doesNotMatch(combined, /\[E-POSTADRESS\]/);
-  assert.match(combined, /BESLUT KRÄVS/);
+  assert.doesNotMatch(
+    combined,
+    /\[E-POSTADRESS\]|KOMPLETTERA|BESLUT KRÄVS|JURIDISK GRANSKNING|\[POSTADRESS\]/,
+  );
   assert.doesNotMatch(combined, /samtycker till behandling av (alla )?personuppgifter/i);
 });
 
-test("legal drafts reflect established launch facts without claiming unfinished controls", () => {
+test("legal drafts reflect the implemented service and proposed retention policy", () => {
   const privacy = JSON.stringify(privacyDocument);
   const terms = JSON.stringify(termsDocument);
 
-  assert.match(terms, /Fameko erbjuds kostnadsfritt\./);
-  assert.match(privacy, /inte har använts på 24 månader/);
-  assert.match(privacy, /minst 30 dagars möjlighet/);
-  assert.match(privacy, /senast inom 30 dagar/);
-  assert.match(privacy, /högst 12 månader efter att ärendet avslutats/);
-  assert.match(privacy, /7 dagar på Workers Free eller 30 dagar på Workers Paid/);
+  assert.match(terms, /Tjänsten är kostnadsfri\. Det finns ingen avgift eller prenumeration\./);
+  assert.match(terms, /frivilligt verktyg/);
+  assert.match(terms, /minst 18 år/);
+  assert.match(terms, /verifierar med e-postkod; något namn krävs inte/);
+  assert.match(privacy, /ingen inloggning har skett på 24 månader/);
+  assert.match(privacy, /inom 30 dagar/);
+  assert.match(privacy, /Föreslagen regel är att avslutade supportärenden/);
+  assert.match(privacy, /senast 12 månader efter den senaste kontakten/);
+  assert.match(privacy, /Time Travel-historik i högst 30 dagar/);
+  assert.match(privacy, /Workers-loggar sparas i högst 7 dagar/);
   assert.match(privacy, /Google \(Gmail\)/);
-  assert.match(privacy, /måste verifieras och dokumenteras före slutligt godkännande/);
-  assert.match(privacy, /inte färdigställd/);
-  assert.match(terms, /KOMPLETTERA när fullständig export och säker kontoradering/);
+  assert.match(privacy, /ännu inte slutligt verifierade och dokumenterade/);
+  assert.match(privacy, /exakta cookieuppsättning och lagringstider är ännu inte/);
+  assert.match(privacy, /exportera dina Fameko-uppgifter som JSON och radera kontot/);
+  assert.match(privacy, /WorkOS-identiteten och aktiva sessioner tas också bort/);
+  assert.match(terms, /versionerad JSON-export/);
+  assert.match(terms, /Du kan radera kontot via kontomenyn efter en ny autentisering/);
+  assert.match(terms, /Föreslagen gallringsregel/);
+  assert.doesNotMatch(privacy + terms, /inte färdigställd|när .* är implementerad/i);
 });
 
 test("privacy sections keep the approved order and end with controller contact", () => {
@@ -61,7 +74,7 @@ test("privacy sections keep the approved order and end with controller contact",
     ],
   );
   assert.deepEqual(privacyDocument.sections.at(-1)?.paragraphs, [
-    "Fameko är ett fristående projekt som drivs av en privatperson. För frågor om tjänsten och hur personuppgifter hanteras kan du kontakta fameko.pilot@gmail.com. Personuppgiftsansvarig är [FULLSTÄNDIGT NAMN].",
+    "Fameko är ett fristående projekt som drivs av en privatperson. Personuppgiftsansvarig och kontakt för dataskyddsfrågor är [FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING], fameko.pilot@gmail.com.",
   ]);
 });
 
@@ -85,7 +98,7 @@ test("terms sections keep the approved order and end with contracting-party cont
     "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
   );
   assert.deepEqual(termsDocument.sections.at(-1)?.paragraphs, [
-    "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN], [POSTADRESS]. Kontakt: fameko.pilot@gmail.com.",
+    "Fameko tillhandahålls av [FULLSTÄNDIGT NAMN – FASTSTÄLLS FÖRE PUBLICERING], privatperson. Kontakt: fameko.pilot@gmail.com.",
   ]);
 });
 
