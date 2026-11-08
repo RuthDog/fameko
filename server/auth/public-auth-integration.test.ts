@@ -12,6 +12,10 @@ import {
 import { acceptWorkosSignUp, continueWorkosSignUp } from "./workos-sign-up.ts";
 import { completeWorkosSignOut } from "./workos-sign-out.ts";
 import {
+  SignOutContextError,
+  selectSignOutMethod,
+} from "./sign-out-routing.ts";
+import {
   currentPrivacyDocumentVersion,
   currentTermsDocumentVersion,
 } from "../legal/legal-versions.ts";
@@ -483,17 +487,94 @@ test("internal sign-up start fails closed without a valid document-navigation at
   assert.equal(prefetch.status, 404);
 });
 
-test("logout cookie mutation stays in a Server Action with all three UX choices", async () => {
+test("logout stays server-verified and has no D1 or client-selected routing", async () => {
   const signOut = await readFile(signOutUrl, "utf8");
   const menu = await readFile(accountMenuUrl, "utf8");
   assert.match(signOut, /^"use server";/);
   assert.match(signOut, /completeWorkosSignOut\(\(\) => signOut\(\)\)/);
+  assert.match(signOut, /getVerifiedWorkosSessionUser/);
+  assert.match(signOut, /cf-access-jwt-assertion/);
+  assert.match(signOut, /verifyAccessToken/);
   assert.doesNotMatch(signOut, /returnTo/);
+  assert.doesNotMatch(signOut, /D1|FAMEKO_DB|database|\.prepare\(/);
+  assert.doesNotMatch(signOut, /FormData|searchParams|clientMethod/);
   assert.match(menu, /Spara och logga ut/);
   assert.match(menu, /Fortsätt redigera/);
   assert.match(menu, /Logga ut utan att spara/);
   assert.doesNotMatch(menu, /@workos-inc/);
   assert.doesNotMatch(menu, /WORKOS_(?:API_KEY|COOKIE_PASSWORD)/);
+});
+
+test("logout selects Access-only, staging and WorkOS production without probing another session", async () => {
+  let resolverCalls = 0;
+  const resolvers = {
+    hasVerifiedAccessSession: async () => {
+      resolverCalls += 1;
+      return true;
+    },
+    workosUserResolver: async () => {
+      resolverCalls += 1;
+      return null;
+    },
+  };
+
+  assert.equal(await selectSignOutMethod("cloudflare_access", resolvers), "cloudflare_access");
+  assert.equal(await selectSignOutMethod("workos_staging", resolvers), "workos");
+  assert.equal(await selectSignOutMethod("workos_production", resolvers), "workos");
+  assert.equal(resolverCalls, 0);
+});
+
+test("transition logout prefers a verified WorkOS session over Access", async () => {
+  let accessChecked = false;
+  assert.equal(
+    await selectSignOutMethod("workos_production_transition", {
+      hasVerifiedAccessSession: async () => {
+        accessChecked = true;
+        return true;
+      },
+      workosUserResolver: async () => ({
+        email: "pilot@example.test",
+        emailVerified: true,
+        id: "user_workos_verified",
+      }),
+    }),
+    "workos",
+  );
+  assert.equal(accessChecked, false);
+});
+
+test("transition logout uses only a verified Access session when WorkOS is absent", async () => {
+  assert.equal(
+    await selectSignOutMethod("workos_production_transition", {
+      hasVerifiedAccessSession: async () => true,
+      workosUserResolver: async () => null,
+    }),
+    "cloudflare_access",
+  );
+  await assert.rejects(
+    selectSignOutMethod("workos_production_transition", {
+      hasVerifiedAccessSession: async () => false,
+      workosUserResolver: async () => null,
+    }),
+    SignOutContextError,
+  );
+});
+
+test("transition logout fails closed on a genuine WorkOS session error", async () => {
+  let accessChecked = false;
+  await assert.rejects(
+    selectSignOutMethod("workos_production_transition", {
+      hasVerifiedAccessSession: async () => {
+        accessChecked = true;
+        return true;
+      },
+      workosUserResolver: async () => {
+        throw new Error("synthetic SDK session failure");
+      },
+    }),
+    /synthetic SDK session failure/,
+  );
+  assert.equal(accessChecked, false);
 });
 
 test("logout preserves AuthKit's NEXT_REDIRECT to the WorkOS logout endpoint", async () => {
