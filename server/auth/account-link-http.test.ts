@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { accountLinkGate, completeAccountLink } from "./account-link-http.ts";
+import {
+  accountLinkGate,
+  completeAccountLink,
+  startAccountLink,
+} from "./account-link-http.ts";
 
 const environment = {
   CF_ACCESS_AUD: "access-audience",
@@ -25,17 +29,168 @@ const unreachableDependencies = {
   },
 };
 
-function formRequest(body: URLSearchParams, origin = "https://fameko.example.test") {
-  return new Request("https://fameko.example.test/account-link/confirm", {
+function formRequest(
+  body: URLSearchParams,
+  origin = "https://fameko.example.test",
+  path = "/account-link/confirm",
+  fetchSite = "same-origin",
+) {
+  return new Request(`https://fameko.example.test${path}`, {
     body,
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Origin: origin,
-      "Sec-Fetch-Site": "same-origin",
+      "Sec-Fetch-Site": fetchSite,
     },
     method: "POST",
   });
 }
+
+const confirmedBody = new URLSearchParams({
+  "account-link-confirmation": "confirmed",
+});
+
+function existingAccessContext() {
+  const timestamp = "2026-11-09T12:00:00.000Z";
+  const userId = "user-existing";
+  const householdId = "household-existing";
+  return {
+    authContext: {
+      provider: "cloudflare_access",
+      providerSubject: "access-subject-existing",
+      verifiedEmail: "pilot@example.test",
+    },
+    context: {
+      household: {
+        created_at: timestamp,
+        id: householdId,
+        name: "Existing household",
+        updated_at: timestamp,
+      },
+      identity: {
+        created_at: timestamp,
+        email: "pilot@example.test",
+        id: "identity-existing",
+        provider: "cloudflare_access",
+        provider_subject: "access-subject-existing",
+        updated_at: timestamp,
+        user_id: userId,
+      },
+      membership: {
+        created_at: timestamp,
+        household_id: householdId,
+        role: "owner" as const,
+        user_id: userId,
+      },
+      user: {
+        created_at: timestamp,
+        display_name: null,
+        id: userId,
+        status: "active" as const,
+        updated_at: timestamp,
+      },
+    },
+    ok: true as const,
+  };
+}
+
+function grantRecordingDatabase() {
+  let batches = 0;
+  const statement = {
+    bind() {
+      return statement;
+    },
+  };
+  const database = {
+    batch: async () => {
+      batches += 1;
+      return [
+        { meta: { changes: 0 } },
+        { meta: { changes: 1 } },
+      ];
+    },
+    prepare: () => statement,
+  } as unknown as D1Database;
+  return { database, grantBatches: () => batches };
+}
+
+test("trusted account-link Origin creates one grant and starts only the verified WorkOS redirect", async () => {
+  const recorded = grantRecordingDatabase();
+  let receivedOptions: { returnTo: string; state: string } | undefined;
+  const response = await startAccountLink(
+    formRequest(
+      confirmedBody,
+      "https://fameko.example.test",
+      "/account-link?utm_source=browser-test",
+    ),
+    environment,
+    {
+      accessResolver: async () => existingAccessContext(),
+      createSignInUrl: async (options) => {
+        receivedOptions = options;
+        return "https://api.workos.com/user_management/authorize?synthetic=1";
+      },
+      database: recorded.database,
+      workosUserResolver: async () => null,
+    },
+  );
+
+  assert.equal(response.status, 303);
+  assert.equal(
+    new URL(response.headers.get("location") ?? "").origin,
+    "https://api.workos.com",
+  );
+  assert.equal(receivedOptions?.returnTo, "/account-link/confirm");
+  assert.ok(receivedOptions?.state);
+  assert.equal(recorded.grantBatches(), 1);
+});
+
+test("opaque and cross-origin account-link starts are rejected before Access or D1", async () => {
+  let accessCalls = 0;
+  const dependencies = {
+    accessResolver: async () => {
+      accessCalls += 1;
+      throw new Error("Access must not be evaluated after failed CSRF validation.");
+    },
+    createSignInUrl: async () => {
+      throw new Error("WorkOS must not be evaluated after failed CSRF validation.");
+    },
+    ...unreachableDependencies,
+  };
+
+  for (const [origin, fetchSite] of [
+    ["null", "same-origin"],
+    ["https://attacker.example", "cross-site"],
+    ["https://fameko.example.test", "cross-site"],
+  ]) {
+    const response = await startAccountLink(
+      formRequest(confirmedBody, origin, "/account-link", fetchSite),
+      environment,
+      dependencies,
+    );
+    assert.equal(response.status, 404);
+  }
+  assert.equal(accessCalls, 0);
+});
+
+test("invalid Access JWT cannot create a grant after valid account-link CSRF validation", async () => {
+  let signInCalls = 0;
+  const response = await startAccountLink(
+    formRequest(confirmedBody, "https://fameko.example.test", "/account-link"),
+    environment,
+    {
+      accessResolver: async () => ({ code: "token_invalid" as const, ok: false as const }),
+      createSignInUrl: async () => {
+        signInCalls += 1;
+        return "https://api.workos.com/should-not-run";
+      },
+      ...unreachableDependencies,
+    },
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal(signInCalls, 0);
+});
 
 test("unconfirmed account linking cannot touch D1 or an existing household", async () => {
   const response = await completeAccountLink(
@@ -58,6 +213,21 @@ test("cross-origin account-link confirmation is rejected before state or D1 acce
         "account-link-state": "not-used",
       }),
       "https://attacker.example",
+    ),
+    environment,
+    unreachableDependencies,
+  );
+  assert.equal(response.status, 404);
+});
+
+test("opaque account-link confirmation Origin is rejected before state or D1 access", async () => {
+  const response = await completeAccountLink(
+    formRequest(
+      new URLSearchParams({
+        "account-link-confirmation": "confirmed",
+        "account-link-state": "not-used",
+      }),
+      "null",
     ),
     environment,
     unreachableDependencies,
