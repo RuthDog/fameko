@@ -4,8 +4,14 @@ import test from "node:test";
 import {
   accountLinkGate,
   completeAccountLink,
+  getAccountLinkConfirmation,
   startAccountLink,
 } from "./account-link-http.ts";
+import {
+  accountLinkStateCookieName,
+  issueAccountLinkState,
+  type VerifiedAccountLinkState,
+} from "./account-link-state.ts";
 
 const environment = {
   CF_ACCESS_AUD: "access-audience",
@@ -113,6 +119,169 @@ function grantRecordingDatabase() {
   } as unknown as D1Database;
   return { database, grantBatches: () => batches };
 }
+
+function confirmationRequest(state: VerifiedAccountLinkState) {
+  return new Request("https://fameko.example.test/account-link/confirm", {
+    headers: {
+      Cookie: `${accountLinkStateCookieName}=${state.token}`,
+    },
+  });
+}
+
+function confirmationDatabase(
+  state: VerifiedAccountLinkState,
+  overrides: Partial<{
+    consumed_at: string | null;
+    expires_at: string;
+    revoked_at: string | null;
+    source_provider_subject: string;
+    state_hash: string;
+    target_provider_subject: string;
+  }> = {},
+) {
+  let reads = 0;
+  const row = {
+    consumed_at: null,
+    existing_user_id: "user-existing",
+    expires_at: "2026-11-09T12:10:00.000Z",
+    id: state.grantId,
+    revoked_at: null,
+    source_provider: "cloudflare_access",
+    source_provider_subject: "access-subject-existing",
+    state_hash: state.stateHash,
+    target_provider: "workos",
+    target_provider_subject: "workos-subject-existing",
+    ...overrides,
+  };
+  const statement = {
+    bind() {
+      return statement;
+    },
+    async first() {
+      reads += 1;
+      return row;
+    },
+  };
+  const database = {
+    prepare() {
+      return statement;
+    },
+  } as unknown as D1Database;
+  return { database, reads: () => reads };
+}
+
+const verifiedWorkosUser = {
+  email: "pilot@example.test",
+  emailVerified: true,
+  id: "workos-subject-existing",
+};
+
+test("account-link confirmation requires and preserves both verified identities without writing", async () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  const state = await issueAccountLinkState(environment, { now });
+  const recorded = confirmationDatabase(state);
+  const result = await getAccountLinkConfirmation(
+    confirmationRequest(state),
+    environment,
+    {
+      accessResolver: async () => existingAccessContext(),
+      database: recorded.database,
+      workosUserResolver: async () => verifiedWorkosUser,
+    },
+    new Date(now + 1_000),
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.context.source.user.id, "user-existing");
+    assert.equal(result.context.source.household.id, "household-existing");
+    assert.equal(result.context.sourceIdentity.providerSubject, "access-subject-existing");
+    assert.equal(result.context.targetIdentity.providerSubject, "workos-subject-existing");
+    assert.equal(result.context.state.grantId, state.grantId);
+  }
+  assert.equal(recorded.reads(), 1);
+});
+
+test("account-link confirmation rejects a missing WorkOS session before reading the grant", async () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  const state = await issueAccountLinkState(environment, { now });
+  const recorded = confirmationDatabase(state);
+  const result = await getAccountLinkConfirmation(
+    confirmationRequest(state),
+    environment,
+    {
+      accessResolver: async () => existingAccessContext(),
+      database: recorded.database,
+      workosUserResolver: async () => null,
+    },
+    new Date(now + 1_000),
+  );
+
+  assert.deepEqual(result, { code: "workos_identity_missing", ok: false });
+  assert.equal(recorded.reads(), 0);
+});
+
+test("account-link confirmation rejects an invalid Access JWT before WorkOS or grant access", async () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  const state = await issueAccountLinkState(environment, { now });
+  const recorded = confirmationDatabase(state);
+  let workosCalls = 0;
+  const result = await getAccountLinkConfirmation(
+    confirmationRequest(state),
+    environment,
+    {
+      accessResolver: async () => ({ code: "token_invalid" as const, ok: false as const }),
+      database: recorded.database,
+      workosUserResolver: async () => {
+        workosCalls += 1;
+        return verifiedWorkosUser;
+      },
+    },
+    new Date(now + 1_000),
+  );
+
+  assert.deepEqual(result, { code: "token_invalid", ok: false });
+  assert.equal(workosCalls, 0);
+  assert.equal(recorded.reads(), 0);
+});
+
+test("account-link confirmation rejects expired state and mismatched grant subjects", async () => {
+  const now = Date.parse("2026-11-09T12:00:00.000Z");
+  const state = await issueAccountLinkState(environment, { now });
+  const recorded = confirmationDatabase(state, {
+    target_provider_subject: "different-workos-subject",
+  });
+  let accessCalls = 0;
+  const expired = await getAccountLinkConfirmation(
+    confirmationRequest(state),
+    environment,
+    {
+      accessResolver: async () => {
+        accessCalls += 1;
+        return existingAccessContext();
+      },
+      database: recorded.database,
+      workosUserResolver: async () => verifiedWorkosUser,
+    },
+    new Date(now + 601_000),
+  );
+  assert.deepEqual(expired, { code: "grant_invalid", ok: false });
+  assert.equal(accessCalls, 0);
+  assert.equal(recorded.reads(), 0);
+
+  const mismatched = await getAccountLinkConfirmation(
+    confirmationRequest(state),
+    environment,
+    {
+      accessResolver: async () => existingAccessContext(),
+      database: recorded.database,
+      workosUserResolver: async () => verifiedWorkosUser,
+    },
+    new Date(now + 1_000),
+  );
+  assert.deepEqual(mismatched, { code: "grant_invalid", ok: false });
+  assert.equal(recorded.reads(), 1);
+});
 
 test("trusted account-link Origin creates one grant and starts only the verified WorkOS redirect", async () => {
   const recorded = grantRecordingDatabase();

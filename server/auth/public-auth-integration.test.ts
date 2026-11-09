@@ -151,13 +151,16 @@ test("registration rejects an opaque null Origin and accepts only the trusted Or
   );
 });
 
-test("WorkOS session refresh composes inside the existing /app middleware perimeter", async () => {
+test("WorkOS session refresh covers the app and account-link confirmation perimeter", async () => {
   const source = await readFile(middlewareUrl, "utf8");
   assert.match(source, /authkit\(request/);
   assert.match(source, /refreshBufferSeconds:\s*60/);
   assert.match(source, /partitionAuthkitHeaders/);
   assert.match(source, /requestHeaders\.delete\("x-fameko-household-id"\)/);
-  assert.match(source, /matcher:\s*\["\/app\/:path\*"\]/);
+  assert.match(
+    source,
+    /matcher:\s*\["\/app\/:path\*",\s*"\/account-link\/confirm"\]/,
+  );
   assert.doesNotMatch(source, /proxy\.ts/);
 });
 

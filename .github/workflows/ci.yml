@@ -108,5 +108,8 @@ jobs:
       - name: Next production build
         run: npm run build
 
+      - name: Verify AuthKit middleware route coverage
+        run: npm run verify:authkit-middleware-build
+
       - name: OpenNext build
         run: npm run opennext:build

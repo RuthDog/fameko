@@ -21,7 +21,10 @@ test("all Personal Economy detail routes exist as App Router pages", async () =>
 test("the existing app-wide auth matcher protects every detail route", async () => {
   const middleware = await readFile(new URL("../../middleware.ts", import.meta.url), "utf8");
 
-  assert.match(middleware, /matcher:\s*\["\/app\/:path\*"\]/);
+  assert.match(
+    middleware,
+    /matcher:\s*\["\/app\/:path\*",\s*"\/account-link\/confirm"\]/,
+  );
   for (const route of detailRoutes) {
     assert.match(`/app/${route}`, /^\/app(?:\/.*)?$/);
   }
