@@ -1,9 +1,8 @@
 import {
   AuthConfigurationError,
-  getAuthMode,
+  isAccountLinkEnabled,
   validateCloudflareAccessConfiguration,
   validateWorkosConfiguration,
-  workosProductionTransitionAuthMode,
 } from "./auth-mode.ts";
 import {
   accountLinkStateDeleteCookie,
@@ -65,8 +64,7 @@ export type AccountLinkContext = {
 
 export function accountLinkGate(environment: AuthEnvironment): AccountLinkGate {
   try {
-    const mode = getAuthMode(environment);
-    if (mode !== workosProductionTransitionAuthMode) {
+    if (!isAccountLinkEnabled(environment)) {
       return { ok: false, status: 404 };
     }
     validateCloudflareAccessConfiguration(environment);

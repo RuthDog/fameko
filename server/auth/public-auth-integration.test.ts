@@ -162,6 +162,9 @@ test("WorkOS session refresh covers the app and account-link confirmation perime
     /matcher:\s*\["\/app\/:path\*",\s*"\/account-link\/confirm"\]/,
   );
   assert.doesNotMatch(source, /proxy\.ts/);
+  assert.match(source, /allowsAccessFallbackForPath/);
+  assert.match(source, /authorization\.code === "identity_missing"/);
+  assert.match(source, /authorizeExistingAccessRequest\(request\)/);
 });
 
 test("new account writes exist only in the verified callback path", async () => {

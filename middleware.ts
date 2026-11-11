@@ -7,15 +7,16 @@ import {
 } from "@workos-inc/authkit-nextjs";
 import {
   authorizeRequest,
+  authorizeExistingAccessRequest,
   type AuthorizationFailureCode,
   type AuthorizationResult,
 } from "./server/auth/authorize-request.ts";
 import {
+  allowsAccessFallbackForPath,
   AuthConfigurationError,
   getAuthMode,
   isWorkosAuthMode,
   validateWorkosConfiguration,
-  workosProductionTransitionAuthMode,
 } from "./server/auth/auth-mode.ts";
 
 type ErrorPresentation = {
@@ -208,9 +209,19 @@ async function workosMiddleware(
     });
   }
 
-  const authorization = await authorizeRequest(request, {
+  let authorization = await authorizeRequest(request, {
     workosUserResolver: async () => authkitResult.session.user,
   });
+  if (
+    !authorization.ok
+    && authorization.code === "identity_missing"
+    && allowAccessFallback
+  ) {
+    const access = await authorizeExistingAccessRequest(request);
+    authorization = access.ok
+      ? { context: access.context, mode: "access", ok: true }
+      : access;
+  }
   const { requestHeaders, responseHeaders } = partitionAuthkitHeaders(
     request,
     authkitResult.headers,
@@ -235,7 +246,11 @@ export async function middleware(request: NextRequest) {
     if (isWorkosAuthMode(mode)) {
       return workosMiddleware(
         request,
-        mode === workosProductionTransitionAuthMode,
+        allowsAccessFallbackForPath(
+          mode,
+          request.nextUrl.pathname,
+          process.env,
+        ),
       );
     }
   } catch (error) {

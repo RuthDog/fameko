@@ -2,6 +2,7 @@ export const cloudflareAccessAuthMode = "cloudflare_access";
 export const workosStagingAuthMode = "workos_staging";
 export const workosProductionTransitionAuthMode = "workos_production_transition";
 export const workosProductionAuthMode = "workos_production";
+export const legacyAccountLinkEnabledValue = "enabled";
 
 export type AuthMode =
   | typeof cloudflareAccessAuthMode
@@ -92,6 +93,34 @@ export function isPublicRegistrationEnabled(environment: AuthEnvironment): boole
   }
   return mode === workosProductionAuthMode
     && environment.FAMEKO_PUBLIC_REGISTRATION?.trim() === "enabled";
+}
+
+export function isLegacyAccountLinkEnabled(
+  environment: AuthEnvironment,
+): boolean {
+  return getAuthMode(environment) === workosProductionAuthMode
+    && environment.FAMEKO_LEGACY_ACCOUNT_LINK?.trim()
+      === legacyAccountLinkEnabledValue;
+}
+
+export function isAccountLinkEnabled(environment: AuthEnvironment): boolean {
+  const mode = getAuthMode(environment);
+  return mode === workosProductionTransitionAuthMode
+    || (mode === workosProductionAuthMode
+      && isLegacyAccountLinkEnabled(environment));
+}
+
+export function allowsAccessFallbackForPath(
+  mode: AuthMode,
+  pathname: string,
+  environment: AuthEnvironment,
+): boolean {
+  if (mode === workosProductionTransitionAuthMode) {
+    return true;
+  }
+  return mode === workosProductionAuthMode
+    && pathname === "/account-link/confirm"
+    && isLegacyAccountLinkEnabled(environment);
 }
 
 export function validateCloudflareAccessConfiguration(

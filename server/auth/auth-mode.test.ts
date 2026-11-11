@@ -4,9 +4,12 @@ import test from "node:test";
 import {
   AuthConfigurationError,
   WorkosEmailNotAllowedError,
+  allowsAccessFallbackForPath,
   assertWorkosStagingEmailAllowed,
   cloudflareAccessAuthMode,
   getAuthMode,
+  isAccountLinkEnabled,
+  isLegacyAccountLinkEnabled,
   validateWorkosConfiguration,
   workosProductionAuthMode,
   workosProductionTransitionAuthMode,
@@ -85,6 +88,81 @@ test("production registration is fail-closed until explicitly enabled", () => {
       FAMEKO_PUBLIC_REGISTRATION: "enabled",
     }),
     { ok: true, publicOrigin: "https://fameko.example.test" },
+  );
+});
+
+test("legacy account linking is explicit, production-only and independent of registration", () => {
+  const legacyEnvironment = {
+    ...productionEnvironment,
+    FAMEKO_LEGACY_ACCOUNT_LINK: "enabled",
+  };
+
+  assert.equal(isLegacyAccountLinkEnabled(productionEnvironment), false);
+  assert.equal(isAccountLinkEnabled(productionEnvironment), false);
+  assert.equal(isLegacyAccountLinkEnabled(legacyEnvironment), true);
+  assert.equal(isAccountLinkEnabled(legacyEnvironment), true);
+  assert.deepEqual(publicWorkosRegistrationGate(legacyEnvironment), {
+    ok: false,
+    status: 404,
+  });
+
+  for (const value of ["", "disabled", "true", "ENABLED"]) {
+    assert.equal(
+      isAccountLinkEnabled({
+        ...productionEnvironment,
+        FAMEKO_LEGACY_ACCOUNT_LINK: value,
+      }),
+      false,
+    );
+  }
+  assert.equal(
+    isLegacyAccountLinkEnabled({
+      ...workosEnvironment,
+      FAMEKO_LEGACY_ACCOUNT_LINK: "enabled",
+    }),
+    false,
+  );
+});
+
+test("production Access fallback is limited to the legacy confirmation path", () => {
+  const legacyEnvironment = {
+    ...productionEnvironment,
+    FAMEKO_LEGACY_ACCOUNT_LINK: "enabled",
+  };
+
+  assert.equal(
+    allowsAccessFallbackForPath(
+      workosProductionAuthMode,
+      "/account-link/confirm",
+      legacyEnvironment,
+    ),
+    true,
+  );
+  for (const pathname of ["/app", "/app/api/session", "/account-link", "/auth/callback"]) {
+    assert.equal(
+      allowsAccessFallbackForPath(
+        workosProductionAuthMode,
+        pathname,
+        legacyEnvironment,
+      ),
+      false,
+    );
+  }
+  assert.equal(
+    allowsAccessFallbackForPath(
+      workosProductionAuthMode,
+      "/account-link/confirm",
+      productionEnvironment,
+    ),
+    false,
+  );
+  assert.equal(
+    allowsAccessFallbackForPath(
+      workosProductionTransitionAuthMode,
+      "/app",
+      productionEnvironment,
+    ),
+    true,
   );
 });
 

@@ -404,7 +404,7 @@ test("opaque account-link confirmation Origin is rejected before state or D1 acc
   assert.equal(response.status, 404);
 });
 
-test("account linking is exposed only in the explicit transition mode", () => {
+test("account linking is exposed only in transition or explicitly enabled production", () => {
   assert.deepEqual(accountLinkGate(environment), {
     ok: true,
     publicOrigin: "https://fameko.example.test",
@@ -414,11 +414,34 @@ test("account linking is exposed only in the explicit transition mode", () => {
     { ok: false, status: 404 },
   );
   assert.deepEqual(
-    accountLinkGate({ ...environment, FAMEKO_AUTH_MODE: "workos_production" }),
+    accountLinkGate({
+      ...environment,
+      FAMEKO_AUTH_MODE: "workos_production",
+      FAMEKO_LEGACY_ACCOUNT_LINK: "enabled",
+    }),
+    { ok: true, publicOrigin: "https://fameko.example.test" },
+  );
+  assert.deepEqual(
+    accountLinkGate({
+      ...environment,
+      FAMEKO_AUTH_MODE: "workos_production",
+    }),
     { ok: false, status: 404 },
   );
   assert.deepEqual(
     accountLinkGate({ ...environment, FAMEKO_AUTH_MODE: "workos_staging" }),
     { ok: false, status: 404 },
+  );
+});
+
+test("production legacy account linking fails closed on incomplete Access configuration", () => {
+  assert.deepEqual(
+    accountLinkGate({
+      ...environment,
+      CF_ACCESS_AUD: undefined,
+      FAMEKO_AUTH_MODE: "workos_production",
+      FAMEKO_LEGACY_ACCOUNT_LINK: "enabled",
+    }),
+    { ok: false, status: 503 },
   );
 });

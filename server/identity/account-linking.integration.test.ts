@@ -182,6 +182,88 @@ test("six synthetic pilots retain six users, six households and seven planning y
   }
 });
 
+test("a remaining Access-only pilot can link later without changing the launch baseline", async () => {
+  const { database, miniflare } = await createDatabase();
+  try {
+    const pilots = await seedSixPilots(database);
+    const before = await snapshot(database);
+
+    for (const [index, pilot] of pilots.slice(0, 2).entries()) {
+      const link = await createBoundGrant(
+        database,
+        pilot,
+        `workos-linked-${index + 1}`,
+        pilot.accessEmail,
+        index * 10_000,
+      );
+      await consumeAccountLinkGrant(
+        database,
+        link.state,
+        link.source.authContext,
+        link.target,
+        new Date(link.now.getTime() + 2_000),
+      );
+    }
+
+    assert.deepEqual(
+      await database.prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM users) AS users,
+           (SELECT COUNT(*) FROM households) AS households,
+           (SELECT COUNT(*) FROM household_members) AS memberships,
+           (SELECT COUNT(*) FROM planning_years) AS planning_years,
+           (SELECT COUNT(*) FROM auth_identities WHERE provider = 'cloudflare_access') AS access_identities,
+           (SELECT COUNT(*) FROM auth_identities WHERE provider = 'workos') AS workos_identities,
+           (SELECT COUNT(*) FROM users u WHERE NOT EXISTS (
+             SELECT 1 FROM auth_identities ai
+             WHERE ai.user_id = u.id AND ai.provider = 'workos'
+           )) AS access_only_users`,
+      ).first(),
+      {
+        access_identities: 6,
+        access_only_users: 4,
+        households: 6,
+        memberships: 6,
+        planning_years: 7,
+        users: 6,
+        workos_identities: 2,
+      },
+    );
+
+    const latePilot = pilots[2];
+    const lateLink = await createBoundGrant(
+      database,
+      latePilot,
+      "workos-linked-later",
+      latePilot.accessEmail,
+      20_000,
+    );
+    const plan = await consumeAccountLinkGrant(
+      database,
+      lateLink.state,
+      lateLink.source.authContext,
+      lateLink.target,
+      new Date(lateLink.now.getTime() + 2_000),
+    );
+
+    assert.equal(plan.userId, latePilot.userId);
+    assert.deepEqual(await snapshot(database), before);
+    assert.deepEqual(
+      await database.prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM auth_identities WHERE provider = 'workos') AS workos_identities,
+           (SELECT COUNT(*) FROM users u WHERE NOT EXISTS (
+             SELECT 1 FROM auth_identities ai
+             WHERE ai.user_id = u.id AND ai.provider = 'workos'
+           )) AS access_only_users`,
+      ).first(),
+      { access_only_users: 3, workos_identities: 3 },
+    );
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
 test("wrong subjects, replay, double callbacks and expiry fail closed", async () => {
   const { database, miniflare } = await createDatabase();
   try {
