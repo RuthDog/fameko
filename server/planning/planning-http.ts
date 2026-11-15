@@ -8,6 +8,7 @@ const authorizationStatus = {
   household_missing: 403,
   identity_missing: 403,
   provisioning_failed: 503,
+  terms_acceptance_required: 403,
   token_invalid: 401,
   token_missing: 401,
   user_disabled: 403,

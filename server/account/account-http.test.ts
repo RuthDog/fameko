@@ -40,8 +40,10 @@ test("account routes enforce server identity, no-store, fresh auth and explicit 
     readFile(new URL("../../app/app/account-menu.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(exportRoute, /authorization\.context/);
+  assert.match(exportRoute, /allowWithoutCurrentTerms:\s*true/);
   assert.match(exportRoute, /Content-Disposition/);
   assert.match(exportRoute, /private, no-store/);
+  assert.match(deleteRoute, /allowWithoutCurrentTerms:\s*true/);
   assert.match(deleteRoute, /checkRecentAuth\(\{ maxAge: 300 \}\)/);
   assert.match(deleteRoute, /RADERA MITT KONTO/);
   assert.match(deleteRoute, /listActiveSessionIds/);

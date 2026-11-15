@@ -28,7 +28,7 @@ export const privacyDocument: LegalDocument = {
     {
       heading: "Vilka uppgifter Fameko behandlar",
       paragraphs: [
-        "När du skapar och använder ett konto behandlas din e-postadress, verifieringsstatus, WorkOS användar-ID, interna användar- och hushålls-ID, godkända dokumentversioner samt nödvändig sessions- och säkerhetsinformation. Registreringen kräver inget namn.",
+        "När du skapar och använder ett konto behandlas din e-postadress, verifieringsstatus, WorkOS användar-ID, interna användar- och hushålls-ID, visade och godkända dokumentversioner samt nödvändig sessions- och säkerhetsinformation. Endast e-postadress och engångskod krävs som identifikationsuppgifter; registreringen kräver inget namn.",
         "I planeringsverktyget väljer du själv vilka uppgifter du vill ange. Det kan vara inkomster, utgifter, saldon, sparande, boende, fordon, tillgångar, planeringsår och egna benämningar.",
         "När du kontaktar Fameko via e-post behandlas meddelandet, din e-postadress och e-postens tekniska metadata. Begränsade tekniska uppgifter kan också behandlas för drift och säkerhet, till exempel tidpunkt, typ av anrop, resultatkod och felsöknings-ID samt IP-adress och webbläsaruppgifter hos drift- och autentiseringsleverantörerna. Famekos egna felloggar ska inte innehålla e-postadress eller ekonomiska planeringsuppgifter.",
       ],
@@ -51,30 +51,30 @@ export const privacyDocument: LegalDocument = {
     {
       heading: "Leverantörer och mottagare",
       paragraphs: [
-        "Cloudflare används för webbdrift, trafikhantering, EU-begränsad D1-databas och begränsade driftloggar. WorkOS används för inloggningsfönster, e-postkod, identitet och sessioner. Famekos ekonomiska planeringsvärden skickas inte till WorkOS.",
+        "Cloudflare används för webbdrift, trafikhantering och D1-databas. Den aktiva D1-databasen är konfigurerad med EU-jurisdiktion. Begränsningen gäller databasen; trafik- och driftmetadata omfattas inte automatiskt av samma geografiska begränsning. WorkOS används för inloggningsfönster, engångskod via e-post, identitet och sessioner. Famekos ekonomiska planeringsvärden skickas inte till WorkOS.",
         "Google (Gmail) används när du kontaktar Fameko på fameko.pilot@gmail.com. Google kan då behandla meddelandet, e-postadresser och teknisk e-postmetadata.",
-        "Fameko begränsar de uppgifter som skickas till respektive tjänst. Fameko säljer inte personuppgifter och använder ingen extern logotyptjänst eller annonserings- eller analystjänst i arbetsytan. Tillämpliga personuppgiftsbiträdesavtal, leverantörsroller och aktuella underleverantörer är ännu inte slutligt verifierade och dokumenterade för publik lansering.",
+        "Fameko begränsar de uppgifter som skickas till respektive tjänst. Fameko säljer inte personuppgifter och använder ingen extern logotyptjänst eller annonserings- eller analystjänst i arbetsytan.",
       ],
     },
     {
       heading: "Behandling utanför EU/EES",
       paragraphs: [
-        "Cloudflare, WorkOS och Google är internationella leverantörer. Uppgifter kan därför behandlas eller vara åtkomliga i länder utanför EU/EES, bland annat USA. WorkOS publicerade databehandlingstillägg innehåller EU-kommissionens standardavtalsklausuler, men Fameko har ännu inte slutfört dokumentationen av tillämpliga avtal, faktiska överföringar och kompletterande skydd. Detta måste vara klart före publik lansering.",
+        "Cloudflare, WorkOS och Google är internationella leverantörer. Uppgifter och teknisk metadata kan därför behandlas eller vara åtkomliga i länder utanför EU/EES, bland annat USA. Överföringar skyddas enligt leverantörernas tillämpliga databehandlingsvillkor, bland annat genom EU-kommissionens standardavtalsklausuler när de behövs.",
       ],
     },
     {
       heading: "Lagringstid och radering",
       paragraphs: [
-        "Kontouppgifter, dokumentgodkännanden och planeringsdata sparas medan kontot används. Föreslagen gallringsregel inför publik lansering är en kontroll minst en gång per år. Om ingen inloggning har skett på 24 månader ska ett meddelande skickas till kontots e-postadress. Kontot och dess aktiva data ska raderas om användaren inte loggar in eller begär att få behålla kontot inom 30 dagar. Regeln och den praktiska rutinen är ännu inte slutligt beslutade.",
-        "Du kan när som helst exportera dina Fameko-uppgifter som JSON och radera kontot via kontomenyn. Vid kontoradering tas den interna användaren, identitetskopplingen, medlemskapet, det egna hushållet, planeringsåren och dokumentgodkännandena bort från den aktiva D1-databasen. WorkOS-identiteten och aktiva sessioner tas också bort. Raderingen sker normalt direkt; om ett tekniskt fel uppstår inaktiveras kontot och ärendet följs upp utan onödigt dröjsmål.",
-        "Raderade D1-uppgifter kan finnas kvar i Cloudflares skyddade Time Travel-historik i högst 30 dagar och försvinner därefter ur återställningsfönstret. Begränsade Workers-loggar sparas i högst 7 dagar. WorkOS uppger att säkerhetskopior raderas enligt leverantörens gallringsschema, men den exakta tidsgränsen och underleverantörernas tider är ännu inte verifierade av Fameko.",
-        "Föreslagen regel är att avslutade supportärenden i Gmail raderas senast 12 månader efter den senaste kontakten. Uppgifter får sparas längre endast när det är nödvändigt för en rättslig skyldighet eller ett konkret rättsligt anspråk och ska raderas när det behovet upphör. Regeln och Gmail-kontots faktiska gallringsmöjligheter måste verifieras före publik lansering.",
+        "Kontouppgifter, dokumentgodkännanden och planeringsdata sparas i den aktiva tjänsten medan kontot finns kvar. Fameko har för närvarande ingen automatisk radering enbart på grund av inaktivitet. Om en sådan regel införs får den en ny dokumentversion och användarna informeras innan den börjar tillämpas.",
+        "Du kan när som helst exportera dina Fameko-uppgifter som JSON och radera kontot via kontomenyn. Vid kontoradering tas den interna användaren, identitetskopplingen, medlemskapet, det egna hushållet, planeringsåren och dokumentgodkännandena bort från den aktiva D1-databasen. Fameko begär också att WorkOS-identiteten och dess aktiva sessioner tas bort. Om ett tekniskt fel hindrar hela åtgärden inaktiveras kontot och raderingen följs upp utan onödigt dröjsmål.",
+        "Raderade D1-uppgifter kan finnas kvar i Cloudflares skyddade Time Travel-historik i högst 30 dagar. Historiken är inte en del av den aktiva tjänsten och används endast för att återställa databasen efter en teknisk incident. När återställningsfönstret har löpt ut kan uppgifterna inte längre återställas med Time Travel. Hos WorkOS kan raderade uppgifter finnas kvar i säkerhetskopior eller arkiv tills de tas bort enligt leverantörens gallringsschema; WorkOS anger ingen exakt offentlig tidsgräns för detta.",
+        "Famekos egna felloggar ska inte innehålla e-postadress eller ekonomiska planeringsuppgifter. Cloudflare och WorkOS kan behandla begränsade tekniska drift- och säkerhetsuppgifter enligt sina tjänstevillkor. Meddelanden till supportadressen sparas så länge de behövs för att hantera ärendet och därefter endast om det behövs för en rättslig skyldighet eller ett konkret rättsligt anspråk.",
       ],
     },
     {
       heading: "Cookies och lagring i webbläsaren",
       paragraphs: [
-        "Fameko använder nödvändiga cookies för registrering, säker omdirigering och inloggad session. Famekos tillfälliga registreringscookie gäller i högst fem minuter. Sessionscookies gäller tills du loggar ut eller sessionen löper ut enligt den konfigurerade sessionstiden. Om nödvändiga cookies blockeras fungerar inte inloggningen. WorkOS inloggningsfönsters exakta cookieuppsättning och lagringstider är ännu inte slutligt verifierade.",
+        "Fameko och WorkOS använder nödvändiga cookies för registrering, säker omdirigering och inloggad session. Famekos tillfälliga registreringscookie gäller i högst fem minuter. Sessionscookies gäller tills du loggar ut eller sessionen löper ut enligt den sessionstid som är konfigurerad hos WorkOS. WorkOS kan även använda nödvändiga cookies i sitt inloggningsfönster. Om nödvändiga cookies blockeras fungerar inte inloggningen.",
         "Valt planeringsår kan sparas lokalt i webbläsaren tills du tar bort webbplatsens lagrade data. En äldre Fameko-version kan också ha lämnat en lokal kopia av planeringsdata. Den kopian kan exporteras eller tas bort i Fameko och raderas inte automatiskt när serverkontot raderas.",
         "Fameko använder inte cookies för annonsering eller egen besöksanalys.",
       ],
@@ -154,8 +154,8 @@ export const termsDocument: LegalDocument = {
       heading: "Dina data, export och avslut",
       paragraphs: [
         "Du behåller dina rättigheter till de uppgifter du själv lägger in. Via kontomenyn kan du hämta en versionerad JSON-export med dina konto-, hushålls-, planerings- och dokumentgodkännandeuppgifter.",
-        "Du kan radera kontot via kontomenyn efter en ny autentisering. Raderingen tar bort den interna användaren, identitetskopplingen, medlemskapet, ditt eget hushåll, planeringsåren och dokumentgodkännandena samt WorkOS-identiteten och aktiva sessioner. Åtgärden kan inte ångras, så exportera först om du vill behålla en kopia. En äldre lokal webbläsarkopia måste du ta bort separat.",
-        "Föreslagen gallringsregel är att ett konto som inte har använts på 24 månader kan avslutas efter e-postmeddelande och 30 dagars möjlighet att behålla kontot. Regeln är ännu inte slutligt beslutad. Fameko kan också avveckla tjänsten. När det är rimligt möjligt lämnas då förhandsinformation och möjlighet att exportera uppgifter.",
+        "Du kan radera kontot via kontomenyn efter en ny autentisering. Raderingen tar bort uppgifterna från den aktiva Fameko-tjänsten och begär att WorkOS-identiteten och aktiva sessioner tas bort. Begränsad återställningshistorik och leverantörers säkerhetskopior hanteras enligt integritetspolicyn. Åtgärden kan inte ångras i den aktiva tjänsten, så exportera först om du vill behålla en kopia. En äldre lokal webbläsarkopia måste du ta bort separat.",
+        "Fameko raderar för närvarande inte konton automatiskt enbart på grund av inaktivitet. Fameko kan avveckla tjänsten. När det är rimligt möjligt lämnas då förhandsinformation och möjlighet att exportera uppgifter.",
       ],
     },
     {
@@ -168,7 +168,7 @@ export const termsDocument: LegalDocument = {
     {
       heading: "Kontakt och avtalspart",
       paragraphs: [
-        "Fameko är ett fristående projekt som drivs av Ola Fischer. Tjänsten tillhandahålls kostnadsfritt.",
+        "Fameko är ett fristående projekt som drivs av Ola Fischer som privatperson. Ola Fischer är avtalspart och tjänsten tillhandahålls kostnadsfritt.",
         "För frågor om tjänsten och användarvillkoren, kontakta fameko.pilot@gmail.com.",
       ],
     },

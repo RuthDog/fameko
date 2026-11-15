@@ -40,7 +40,6 @@ function registrationPage(request: Request): Response {
       input { width: 20px; height: 20px; flex: 0 0 auto; }
       input[type="hidden"] { display: none; }
       .notice { margin-top: 20px; border-radius: 16px; background: #eef2ea; padding: 16px; font-size: 14px; }
-      .draft { border: 1px solid #f4d99b; border-radius: 12px; background: #fffbeb; color: #713f12; padding: 10px 12px; font-size: 13px; font-weight: 650; }
       .actions { display: grid; gap: 12px; margin-top: 24px; }
       button { width: 100%; min-height: 48px; border: 0; border-radius: 999px; background: #1d252d; color: white; font: inherit; font-weight: 700; cursor: pointer; }
       button.secondary { border: 1px solid #d6d3d1; background: white; color: #1d252d; }
@@ -54,12 +53,11 @@ function registrationPage(request: Request): Response {
         <div class="brand">Fameko</div>
         <h1 id="registration-title">Skapa konto</h1>
         <p>Fameko är ett frivilligt planeringsverktyg för vuxna. Du väljer själv vilka ekonomiska belopp och detaljer du anger.</p>
-        <div class="notice">Registreringen använder endast din e-postadress och en e-postkod som identifikationsuppgifter. Vi använder e-postadressen för säker inloggning och för att koppla din planering till rätt konto. <a href="/privacy">Läs arbetsutkastet till integritetspolicy</a>.</div>
-        <p class="draft">Staging: policy och villkor är arbetsutkast och inte slutligt godkända.</p>
+        <div class="notice">Registreringen använder endast din e-postadress och en e-postkod som identifikationsuppgifter. Vi använder e-postadressen för säker inloggning och för att koppla din planering till rätt konto. <a href="/privacy">Läs integritetspolicyn</a>.</div>
         ${registrationError}
         <form action="/sign-up" method="post">
           <label><input name="adult-confirmation" required type="checkbox" value="confirmed" /><span>Jag bekräftar att jag är minst 18 år.</span></label>
-          <label><input name="terms-confirmation" required type="checkbox" value="${currentTermsDocumentVersion}" /><span>Jag har läst och godkänner <a href="/terms">arbetsutkastet till användarvillkor</a> (${currentTermsDocumentVersion}). Detta är ett avtalsgodkännande, inte ett generellt GDPR-samtycke.</span></label>
+          <label><input name="terms-confirmation" required type="checkbox" value="${currentTermsDocumentVersion}" /><span>Jag har läst och godkänner <a href="/terms">användarvillkoren</a> (${currentTermsDocumentVersion}). Detta är ett avtalsgodkännande, inte ett generellt GDPR-samtycke.</span></label>
           <input name="privacy-version" type="hidden" value="${currentPrivacyDocumentVersion}" />
           <div class="actions">
             <button name="registration-intent" type="submit" value="create">Skapa nytt konto</button>

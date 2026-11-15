@@ -29,6 +29,14 @@ const signUpHandlerUrl = new URL("./workos-sign-up.ts", import.meta.url);
 const signOutUrl = new URL("../../app/auth/sign-out/actions.ts", import.meta.url);
 const accountMenuUrl = new URL("../../app/app/account-menu.tsx", import.meta.url);
 const sessionRouteUrl = new URL("../../app/app/api/session/route.ts", import.meta.url);
+const legalAcceptancePageUrl = new URL(
+  "../../app/app/legal/accept/page.tsx",
+  import.meta.url,
+);
+const legalAcceptanceRouteUrl = new URL(
+  "../../app/app/api/legal/accept/route.ts",
+  import.meta.url,
+);
 
 const environment = {
   FAMEKO_AUTH_MODE: workosStagingAuthMode,
@@ -165,6 +173,30 @@ test("WorkOS session refresh covers the app and account-link confirmation perime
   assert.match(source, /allowsAccessFallbackForPath/);
   assert.match(source, /authorization\.code === "identity_missing"/);
   assert.match(source, /authorizeExistingAccessRequest\(request\)/);
+});
+
+test("current terms gate protects planning while preserving legal and account controls", async () => {
+  const [middleware, acceptancePage, acceptanceRoute] = await Promise.all([
+    readFile(middlewareUrl, "utf8"),
+    readFile(legalAcceptancePageUrl, "utf8"),
+    readFile(legalAcceptanceRouteUrl, "utf8"),
+  ]);
+
+  assert.match(middleware, /terms_acceptance_required/);
+  assert.match(middleware, /request\.nextUrl\.pathname\.startsWith\("\/app\/api\/"\)/);
+  assert.match(middleware, /acceptanceUrl:\s*"\/app\/legal\/accept"/);
+  assert.match(middleware, /NextResponse\.redirect\(acceptanceUrl, 303\)/);
+  assert.match(middleware, /mayUseAppWithoutCurrentTerms/);
+
+  assert.match(acceptancePage, /href="\/terms"/);
+  assert.match(acceptancePage, /href="\/privacy"/);
+  assert.match(acceptancePage, /name="terms-confirmation"/);
+  assert.match(acceptancePage, /required/);
+  assert.doesNotMatch(acceptancePage, /defaultChecked|checked=/);
+  assert.match(acceptancePage, /inte ett generellt GDPR-samtycke/);
+  assert.match(acceptancePage, /href="\/app\/account\/export"/);
+  assert.match(acceptancePage, /href="\/app\/account\/delete"/);
+  assert.match(acceptanceRoute, /acceptCurrentLegalTerms\(request, process\.env\)/);
 });
 
 test("new account writes exist only in the verified callback path", async () => {

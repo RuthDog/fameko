@@ -28,6 +28,7 @@ import { IdentityAuthorizationError } from "../identity/resolve-identity.ts";
 import { IdentityRepository } from "../identity/identity-repository.ts";
 import { resolveAuthorizedIdentity } from "../identity/resolve-identity.ts";
 import type { AuthorizedPilotContext } from "../identity/identity-types";
+import { hasAcceptedCurrentTerms } from "../legal/legal-acceptance.ts";
 
 export type AuthorizationFailureCode =
   | "configuration_missing"
@@ -35,6 +36,7 @@ export type AuthorizationFailureCode =
   | "household_missing"
   | "identity_missing"
   | "provisioning_failed"
+  | "terms_acceptance_required"
   | "token_invalid"
   | "token_missing"
   | "user_disabled"
@@ -50,6 +52,7 @@ export type AuthorizationResult =
   | { code: AuthorizationFailureCode; ok: false };
 
 type AuthorizeRequestOptions = {
+  allowWithoutCurrentTerms?: boolean;
   database?: D1Database;
   environment?: Record<string, string | undefined>;
   workosUserResolver?: () => Promise<VerifiedWorkosUser | null>;
@@ -119,6 +122,15 @@ async function authorizeWorkosIdentity(
       new IdentityRepository(database),
       authContext,
     );
+    if (!options.allowWithoutCurrentTerms) {
+      try {
+        if (!await hasAcceptedCurrentTerms(database, context.user.id)) {
+          return { code: "terms_acceptance_required", ok: false };
+        }
+      } catch {
+        return { code: "database_unavailable", ok: false };
+      }
+    }
     return { context, mode: "workos", ok: true };
   } catch (error) {
     if (error instanceof AuthConfigurationError) {

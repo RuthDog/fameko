@@ -261,8 +261,8 @@ test("verified legal acceptance rolls back with failed WorkOS provisioning", asy
         },
         {
           acceptedAt: "2026-11-01T10:00:00.000Z",
-          privacyVersion: "privacy-1.0-draft",
-          termsVersion: "terms-1.0-draft",
+          privacyVersion: "privacy-1.0",
+          termsVersion: "terms-1.0",
         },
       ),
     );
@@ -319,8 +319,8 @@ test("verified WorkOS callback is idempotent under concurrent delivery", async (
   try {
     const acceptance = {
       acceptedAt: "2026-11-01T10:00:00.000Z",
-      privacyVersion: "privacy-1.0-draft" as const,
-      termsVersion: "terms-1.0-draft" as const,
+      privacyVersion: "privacy-1.0" as const,
+      termsVersion: "terms-1.0" as const,
     };
     const [first, second] = await Promise.all([
       provisionWorkosAccountAfterVerifiedCallback(database, workosContext, acceptance),
@@ -358,8 +358,8 @@ test("same email never links a new WorkOS subject to existing pilot data", async
       },
       {
         acceptedAt: "2026-11-01T10:00:00.000Z",
-        privacyVersion: "privacy-1.0-draft",
-        termsVersion: "terms-1.0-draft",
+        privacyVersion: "privacy-1.0",
+        termsVersion: "terms-1.0",
       },
     );
 

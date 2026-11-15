@@ -14,13 +14,13 @@ const legalPageUrl = new URL("../../app/legal-document-page.tsx", import.meta.ur
 const authStagingConfigUrl = new URL("../../wrangler.auth-staging.jsonc", import.meta.url);
 const brandLogoUrl = new URL("../../app/components/brand-logo.tsx", import.meta.url);
 
-test("legal documents remain draft-versioned without internal editing notes", async () => {
+test("legal documents are final-versioned without internal editing notes", async () => {
   assert.equal(privacyDocument.version, currentPrivacyDocumentVersion);
   assert.equal(termsDocument.version, currentTermsDocumentVersion);
-  assert.match(privacyDocument.version, /-draft$/);
-  assert.match(termsDocument.version, /-draft$/);
-  assert.equal(privacyDocument.effectiveDate, "Ej fastställt");
-  assert.equal(termsDocument.effectiveDate, "Ej fastställt");
+  assert.equal(privacyDocument.version, "privacy-1.0");
+  assert.equal(termsDocument.version, "terms-1.0");
+  assert.equal(privacyDocument.effectiveDate, "2026-11-20");
+  assert.equal(termsDocument.effectiveDate, "2026-11-20");
 
   const combined = JSON.stringify([privacyDocument, termsDocument]);
   assert.match(combined, /Ola Fischer/);
@@ -32,7 +32,7 @@ test("legal documents remain draft-versioned without internal editing notes", as
   assert.doesNotMatch(combined, /samtycker till behandling av (alla )?personuppgifter/i);
 });
 
-test("legal drafts reflect the implemented service and proposed retention policy", () => {
+test("legal documents reflect the implemented service and current retention behavior", () => {
   const privacy = JSON.stringify(privacyDocument);
   const terms = JSON.stringify(termsDocument);
 
@@ -40,20 +40,19 @@ test("legal drafts reflect the implemented service and proposed retention policy
   assert.match(terms, /frivilligt verktyg/);
   assert.match(terms, /minst 18 år/);
   assert.match(terms, /verifierar med e-postkod; något namn krävs inte/);
-  assert.match(privacy, /ingen inloggning har skett på 24 månader/);
-  assert.match(privacy, /inom 30 dagar/);
-  assert.match(privacy, /Föreslagen regel är att avslutade supportärenden/);
-  assert.match(privacy, /senast 12 månader efter den senaste kontakten/);
+  assert.match(privacy, /ingen automatisk radering enbart på grund av inaktivitet/);
+  assert.match(terms, /raderar för närvarande inte konton automatiskt enbart på grund av inaktivitet/);
   assert.match(privacy, /Time Travel-historik i högst 30 dagar/);
-  assert.match(privacy, /Workers-loggar sparas i högst 7 dagar/);
+  assert.match(privacy, /inte en del av den aktiva tjänsten/);
+  assert.match(privacy, /WorkOS anger ingen exakt offentlig tidsgräns/);
   assert.match(privacy, /Google \(Gmail\)/);
-  assert.match(privacy, /ännu inte slutligt verifierade och dokumenterade/);
-  assert.match(privacy, /exakta cookieuppsättning och lagringstider är ännu inte/);
+  assert.match(privacy, /EU-kommissionens standardavtalsklausuler när de behövs/);
+  assert.match(privacy, /sessionstid som är konfigurerad hos WorkOS/);
   assert.match(privacy, /exportera dina Fameko-uppgifter som JSON och radera kontot/);
-  assert.match(privacy, /WorkOS-identiteten och aktiva sessioner tas också bort/);
+  assert.match(privacy, /begär också att WorkOS-identiteten och dess aktiva sessioner tas bort/);
   assert.match(terms, /versionerad JSON-export/);
   assert.match(terms, /Du kan radera kontot via kontomenyn efter en ny autentisering/);
-  assert.match(terms, /Föreslagen gallringsregel/);
+  assert.doesNotMatch(privacy + terms, /24 månader|Föreslagen gallringsregel/);
   assert.doesNotMatch(privacy + terms, /inte färdigställd|när .* är implementerad/i);
 });
 
@@ -99,7 +98,7 @@ test("terms sections keep the approved order and end with contracting-party cont
     "Fameko är ett frivilligt verktyg för att strukturera och planera hushållets ekonomi.",
   );
   assert.deepEqual(termsDocument.sections.at(-1)?.paragraphs, [
-    "Fameko är ett fristående projekt som drivs av Ola Fischer. Tjänsten tillhandahålls kostnadsfritt.",
+    "Fameko är ett fristående projekt som drivs av Ola Fischer som privatperson. Ola Fischer är avtalspart och tjänsten tillhandahålls kostnadsfritt.",
     "För frågor om tjänsten och användarvillkoren, kontakta fameko.pilot@gmail.com.",
   ]);
 });
@@ -113,7 +112,7 @@ test("privacy and terms routes use the shared mobile legal-document presentation
 
   assert.match(privacyPage, /privacyDocument/);
   assert.match(termsPage, /termsDocument/);
-  assert.match(legalPage, /ARBETSUTKAST/);
+  assert.doesNotMatch(legalPage, /ARBETSUTKAST|platshållare/);
   assert.match(legalPage, /max-w-\[720px\]/);
   assert.match(legalPage, /text-\[26px\]/);
   assert.match(legalPage, /text-\[15px\]/);

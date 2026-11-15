@@ -21,8 +21,8 @@ const migrationUrls = [
 
 const acceptance = {
   acceptedAt: "2026-11-01T10:00:00.000Z",
-  privacyVersion: "privacy-1.0-draft" as const,
-  termsVersion: "terms-1.0-draft" as const,
+  privacyVersion: "privacy-1.0" as const,
+  termsVersion: "terms-1.0" as const,
 };
 
 async function createDatabase(name: string) {

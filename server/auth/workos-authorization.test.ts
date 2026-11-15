@@ -6,6 +6,7 @@ import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { unstable_splitSqlQuery } from "wrangler";
 
 import { provisionWorkosAccountAfterVerifiedCallback } from "../identity/first-login-provisioning.ts";
+import { recordCurrentTermsAcceptance } from "../legal/legal-acceptance.ts";
 import { authorizeRequest } from "./authorize-request.ts";
 
 const migrationUrls = [
@@ -86,8 +87,8 @@ test("WorkOS requests resolve only identities provisioned by a verified callback
       },
       {
         acceptedAt: "2026-11-01T10:00:00.000Z",
-        privacyVersion: "privacy-1.0-draft",
-        termsVersion: "terms-1.0-draft",
+        privacyVersion: "privacy-1.0",
+        termsVersion: "terms-1.0",
       },
     );
     const authorized = await authorizeRequest(
@@ -130,6 +131,84 @@ test("ordinary WorkOS GET cannot provision an unknown subject", async () => {
       planning_years: 0,
       users: 0,
     });
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+test("existing WorkOS user is gated until current terms are accepted without changing the household", async () => {
+  const { database, miniflare } = await createDatabase();
+  const user = {
+    email: "adult@example.test",
+    emailVerified: true,
+    id: "workos-user-existing-without-acceptance",
+  };
+
+  try {
+    const provisioned = await provisionWorkosAccountAfterVerifiedCallback(
+      database,
+      {
+        provider: "workos",
+        providerSubject: user.id,
+        verifiedEmail: user.email,
+      },
+      {
+        acceptedAt: "2026-11-01T10:00:00.000Z",
+        privacyVersion: "privacy-1.0",
+        termsVersion: "terms-1.0",
+      },
+    );
+    await database.prepare("DELETE FROM legal_acceptances WHERE user_id = ?")
+      .bind(provisioned.user.id)
+      .run();
+
+    assert.deepEqual(
+      await authorizeRequest(new Request("https://auth-staging.example.test/app"), {
+        database,
+        environment,
+        workosUserResolver: async () => user,
+      }),
+      { code: "terms_acceptance_required", ok: false },
+    );
+
+    const accountControlAuthorization = await authorizeRequest(
+      new Request("https://auth-staging.example.test/app/account/export"),
+      {
+        allowWithoutCurrentTerms: true,
+        database,
+        environment,
+        workosUserResolver: async () => user,
+      },
+    );
+    assert.equal(accountControlAuthorization.ok, true);
+    if (!accountControlAuthorization.ok) return;
+    assert.equal(accountControlAuthorization.context.user.id, provisioned.user.id);
+    assert.equal(accountControlAuthorization.context.household.id, provisioned.household.id);
+
+    await recordCurrentTermsAcceptance(
+      database,
+      accountControlAuthorization.context,
+      new Date("2026-11-15T15:00:00.000Z"),
+    );
+    const authorized = await authorizeRequest(
+      new Request("https://auth-staging.example.test/app"),
+      { database, environment, workosUserResolver: async () => user },
+    );
+    assert.equal(authorized.ok, true);
+    if (authorized.ok) {
+      assert.equal(authorized.context.user.id, provisioned.user.id);
+      assert.equal(authorized.context.household.id, provisioned.household.id);
+    }
+    assert.deepEqual(await counts(database), {
+      households: 1,
+      identities: 1,
+      planning_years: 1,
+      users: 1,
+    });
+    const acceptanceCount = await database.prepare(
+      "SELECT COUNT(*) AS count FROM legal_acceptances WHERE user_id = ?",
+    ).bind(provisioned.user.id).first<{ count: number }>();
+    assert.equal(acceptanceCount?.count, 1);
   } finally {
     await miniflare.dispose();
   }
@@ -215,8 +294,8 @@ test("WorkOS production authorizes only an already-linked subject and never prov
       },
       {
         acceptedAt: "2026-11-06T10:00:00.000Z",
-        privacyVersion: "privacy-1.0-draft",
-        termsVersion: "terms-1.0-draft",
+        privacyVersion: "privacy-1.0",
+        termsVersion: "terms-1.0",
       },
     );
     const authorized = await authorizeRequest(

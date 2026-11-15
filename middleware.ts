@@ -18,6 +18,7 @@ import {
   isWorkosAuthMode,
   validateWorkosConfiguration,
 } from "./server/auth/auth-mode.ts";
+import { mayUseAppWithoutCurrentTerms } from "./server/legal/legal-acceptance.ts";
 
 type ErrorPresentation = {
   description: string;
@@ -50,6 +51,11 @@ const errorPresentations: Record<AuthorizationFailureCode, ErrorPresentation> = 
     description: "Försök igen om en liten stund.",
     status: 503,
     title: "Ditt konto kunde inte skapas just nu",
+  },
+  terms_acceptance_required: {
+    description: "Läs och godkänn användarvillkoren för att fortsätta till planeringsverktyget.",
+    status: 403,
+    title: "Du behöver godkänna villkoren",
   },
   token_invalid: {
     description: "Din inloggning kunde inte bekräftas. Gå tillbaka och logga in igen.",
@@ -209,7 +215,11 @@ async function workosMiddleware(
     });
   }
 
+  const allowWithoutCurrentTerms = mayUseAppWithoutCurrentTerms(
+    request.nextUrl.pathname,
+  );
   let authorization = await authorizeRequest(request, {
+    allowWithoutCurrentTerms,
     workosUserResolver: async () => authkitResult.session.user,
   });
   if (
@@ -226,6 +236,30 @@ async function workosMiddleware(
     request,
     authkitResult.headers,
   );
+
+  if (!authorization.ok && authorization.code === "terms_acceptance_required") {
+    if (request.nextUrl.pathname.startsWith("/app/api/")) {
+      return applyResponseHeaders(
+        NextResponse.json(
+          {
+            acceptanceUrl: "/app/legal/accept",
+            error: "terms_acceptance_required",
+          },
+          { headers: { "Cache-Control": "no-store" }, status: 403 },
+        ),
+        responseHeaders,
+      );
+    }
+    const acceptanceUrl = new URL("/app/legal/accept", request.url);
+    acceptanceUrl.searchParams.set(
+      "returnTo",
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+    return applyResponseHeaders(
+      NextResponse.redirect(acceptanceUrl, 303),
+      responseHeaders,
+    );
+  }
 
   if (!authorization.ok) {
     return applyResponseHeaders(

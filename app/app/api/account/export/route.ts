@@ -12,7 +12,9 @@ export async function POST(request: Request) {
     return new Response("Not found", { status: 404 });
   }
 
-  const authorization = await authorizeRequest(request);
+  const authorization = await authorizeRequest(request, {
+    allowWithoutCurrentTerms: true,
+  });
   if (!authorization.ok || authorization.mode !== "workos") {
     return NextResponse.json(
       { error: "not_authorized" },

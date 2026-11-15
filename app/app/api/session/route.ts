@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "../../../../server/auth/authorize-request.ts";
 
 export async function GET(request: Request) {
-  const authorization = await authorizeRequest(request);
+  const authorization = await authorizeRequest(request, {
+    allowWithoutCurrentTerms: true,
+  });
   if (!authorization.ok) {
     return NextResponse.json(
       { error: "session_unavailable" },

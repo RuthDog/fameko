@@ -4,7 +4,7 @@ import { LegalDocumentPage } from "../legal-document-page.tsx";
 import { termsDocument } from "../../server/legal/legal-documents.ts";
 
 export const metadata: Metadata = {
-  title: "Användarvillkor – arbetsutkast – Fameko",
+  title: "Användarvillkor – Fameko",
 };
 
 export default function TermsPage() {
