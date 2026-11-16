@@ -1,15 +1,33 @@
-import { checkRecentAuth, getSignInUrl } from "@workos-inc/authkit-nextjs";
+import { checkRecentAuth } from "@workos-inc/authkit-nextjs";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
+import { needsAccountDeleteReauthentication } from "../../../../server/account/account-delete-auth.ts";
 import { DeleteAccountForm } from "./delete-account-form.tsx";
 
 export const dynamic = "force-dynamic";
 
 export default async function DeleteAccountPage() {
-  const recent = await checkRecentAuth({ maxAge: 300 });
-  if (recent.isStale) {
-    redirect(await getSignInUrl({ maxAge: 300, returnTo: "/app/account/delete" }));
+  const needsReauthentication = await needsAccountDeleteReauthentication(checkRecentAuth);
+  if (needsReauthentication) {
+    return (
+      <main className="min-h-screen bg-stone-50 px-4 py-10 text-stone-900">
+        <section className="mx-auto max-w-xl rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+          <Link className="text-sm font-semibold text-stone-600 underline" href="/app/legal/accept">
+            Till kontoalternativ
+          </Link>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight">Bekräfta din inloggning</h1>
+          <p className="mt-4 text-sm leading-6 text-stone-700">
+            Du behöver logga in igen innan du kan öppna sidan för kontoradering.
+          </p>
+          <a
+            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-full bg-stone-900 px-5 text-sm font-semibold text-white"
+            href="/auth/reauth/account-delete"
+          >
+            Logga in igen
+          </a>
+        </section>
+      </main>
+    );
   }
 
   return (
