@@ -19,8 +19,8 @@ test("legal documents are final-versioned without internal editing notes", async
   assert.equal(termsDocument.version, currentTermsDocumentVersion);
   assert.equal(privacyDocument.version, "privacy-1.0");
   assert.equal(termsDocument.version, "terms-1.0");
-  assert.equal(privacyDocument.effectiveDate, "2026-11-20");
-  assert.equal(termsDocument.effectiveDate, "2026-11-20");
+  assert.equal(privacyDocument.effectiveDate, "2026-11-16");
+  assert.equal(termsDocument.effectiveDate, "2026-11-16");
 
   const combined = JSON.stringify([privacyDocument, termsDocument]);
   assert.match(combined, /Ola Fischer/);

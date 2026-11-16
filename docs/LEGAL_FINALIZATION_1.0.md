@@ -1,15 +1,15 @@
 # Fameko – Legal finalization 1.0
 
-Status: **IMPLEMENTERAT FÖR GODKÄNNANDE – inte publicerat**
-Granskat: 2026-11-15
+Status: **GODKÄND FÖR PRODUKTIONSRELEASE – inte publicerad**
+Granskat: 2026-11-16
 
 ## Leverans
 
 De fullständiga dokumentförslagen finns i `server/legal/legal-documents.ts`.
 Avsnittsordning, komponent, typografi och övrig dokumentdesign är oförändrade.
-Koden är förberedd med versionerna `privacy-1.0` och `terms-1.0` samt
-ikraftträdandedatumet 2026-11-20. Om publiceringen sker ett annat datum ska
-datumet ändras före bygget som går till produktion.
+Koden är godkänd med versionerna `privacy-1.0` och `terms-1.0` samt
+ikraftträdandedatumet 2026-11-16. Produktägaren godkände texterna, datumet och
+en kontrollerad produktionsrelease den 2026-11-16.
 
 En mobilanpassad acceptanssida är implementerad för befintliga
 WorkOS-användare som saknar exakt aktuell acceptans. Godkännandet är aktivt,
@@ -66,10 +66,11 @@ Verifierat i offentliga villkor:
 - Aktuell [underbiträdeslista](https://trust.workos.com/subprocessors) publiceras
   separat och kan ändras.
 
-Produktägaren behöver fortfarande logga in och dokumentera att produktionskontot
-innehas av Ola Fischer, att Magic Auth endast kräver e-post och engångskod, vilka
-sessionstider som är valda samt att ovanstående avtalsversioner är de som gäller
-för kontot. Ingen Dashboard-inställning ska ändras i denna kontroll.
+Den publika produktionsinloggningen är verifierad läsande och visar e-post följt
+av engångskod, utan lösenordsfält. Kontospecifik avtalstyp, eventuell separat
+orderblankett och vald sessionstid kan endast verifieras efter projektägarens
+inloggning i WorkOS Dashboard. Någon sådan uppgift antas därför inte här och
+ingen Dashboard-inställning ska ändras i kontrollen.
 
 ### Cloudflare
 
@@ -91,36 +92,31 @@ Verifierat i offentliga villkor:
   aktiverad. Detta ska inte förväxlas med D1 Time Travel eller beskrivas som en
   generell lagringstid för all Cloudflare-metadata.
 
-Produktägaren behöver endast dokumentera att Cloudflare-kontot innehas av Ola
-Fischer och spara datum/länk eller PDF för den Self-Serve- och DPA-version som
-gäller för kontot. Ingen separat SCC, TIA, lagringstid eller teknisk garanti ska
-antas utöver de tillämpliga villkoren.
+Cloudflares offentliga standardvillkor är verifierade, men kontospecifik
+avtalstyp och eventuell separat överenskommelse kan endast verifieras efter
+projektägarens inloggning. Ingen separat SCC, TIA, lagringstid eller teknisk
+garanti antas utöver de tillämpliga villkoren.
 
-## Kvarvarande beslut
+## Releasebeslut
 
-1. **Slutgodkännande och datum.** Produktägaren godkänner dokumenttexterna,
-   versionerna `privacy-1.0` och `terms-1.0` samt 2026-11-20 som
-   ikraftträdandedatum. Om releasen flyttas ska datumet justeras före
-   produktionsbygget.
-2. **Leverantörskontroll.** Produktägaren gör den begränsade läsande kontrollen
-   av kontoägare och tillämplig avtalsversion för WorkOS och Cloudflare och
-   sparar underlaget. Ingen Dashboard-inställning ska ändras.
-3. **Releasefönster.** Produktägaren väljer ett kontrollerat releasefönster där
-   legal-/acceptansreleasen läggs ut och verifieras innan publik registrering
-   aktiveras separat.
+1. Produktägaren har godkänt dokumenttexterna, versionerna `privacy-1.0` och
+   `terms-1.0`, ikraftträdandedatumet 2026-11-16 och en kontrollerad
+   produktionsrelease.
+2. Publik registrering ska fortsatt vara avstängd. Den aktiveras endast genom
+   ett separat beslut och en separat verifiering.
+3. Kontospecifik avtalstyp hos WorkOS och Cloudflare dokumenteras när
+   projektägaren är inloggad; inga sådana avtalsuppgifter antas i releasen.
 
 ## Exakt vad som krävs för att ta bort DRAFT
 
 DRAFT-markeringarna är redan borttagna i den förberedda koden, utan ändring av
-layout, typografi eller avsnittsordning. För att de slutliga dokumenten faktiskt
-ska publiceras krävs endast att produktägaren:
+layout, typografi eller avsnittsordning. Produktägaren har godkänt texterna,
+versionerna, ikraftträdandedatumet och den kontrollerade produktionssättningen.
+DRAFT-status kan därför tas bort när exakt den godkända committen har passerat
+Linux CI och aktiverats i produktion.
 
-1. godkänner texterna, versionerna och ikraftträdandedatumet,
-2. slutför den läsande leverantörskontrollen ovan, och
-3. godkänner det verifierade produktionsbygget för kontrollerad deploy.
-
-Om godkänd produktionsdeploy inte sker 2026-11-20 måste
-`legalDocumentEffectiveDate` uppdateras innan det nya bygget skapas.
+Om produktionsdeploy inte sker 2026-11-16 måste datumfrågan tas upp för ett nytt
+beslut innan en Worker-version aktiveras.
 
 ## Kort plan för publik registrering
 
@@ -134,15 +130,17 @@ Om godkänd produktionsdeploy inte sker 2026-11-20 måste
 4. Aktivera därefter publik registrering separat och verifiera ett nytt konto
    från registrering till export/radering.
 
-## Verifiering 2026-11-15
+## Verifiering 2026-11-16
 
-- Auth-, legal-, konto- och identitetstester: 126 godkända.
+- Auth-, legal-, konto- och identitetstester: 129 godkända.
 - Full planeringsregression: 235 godkända.
-- Riktade Financial Health-, årshanterings-, varumärkes- och PDF-tester:
-  83 godkända.
+- Riktade Financial Health-, årshanterings-, PDF- och storage/save-tester:
+  79 godkända.
 - ESLint, Next-produktionsbygge, AuthKit-middlewarekontroll och OpenNext-bygge:
   godkända.
-- `npm audit`: 0 kända sårbarheter.
+- `npm audit`: ett känt moderat Next.js-fynd. Den berörda kombinationen
+  `use cache`/`unstable_cache` används inte i Fameko. Uppdatering till den
+  korrigerade Next.js-versionen hanteras i en separat release.
 
-Ingen deploy, Dashboard-ändring, D1-migration, användarändring, merge till main
-eller slutlig publicering ingår i denna leverans.
+Releasecommitten innehåller ingen Dashboard-ändring, D1-migration,
+användarändring eller aktivering av publik registrering.
