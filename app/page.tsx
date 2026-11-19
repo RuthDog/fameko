@@ -1,6 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { publicWorkosRegistrationGate } from "../server/auth/public-auth-http.ts";
+
+export const dynamic = "force-dynamic";
+
 const pilotEmail = "fameko.pilot@gmail.com";
 const pilotSubject = "Pilotansökan – Fameko";
 const pilotBody = `Hej!
@@ -100,9 +104,11 @@ function Wordmark() {
 }
 
 export default function LandingPage() {
+  const registrationAvailable = publicWorkosRegistrationGate(process.env).ok;
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f5f3ed] text-[#1d252d]">
-      <header className="sticky top-0 z-50 border-b border-[#d9d7d0]/70 bg-[#f5f3ed]/88 px-5 py-4 backdrop-blur-xl sm:px-8 lg:px-10">
+      <header className="sticky top-0 z-50 border-b border-[#d9d7d0]/70 bg-[#f5f3ed]/88 px-4 py-4 backdrop-blur-xl sm:px-8 lg:px-10">
         <div className="mx-auto flex w-full max-w-[1240px] items-center justify-between">
           <Link
             aria-label="Fameko – startsida"
@@ -111,7 +117,7 @@ export default function LandingPage() {
           >
             <Wordmark />
           </Link>
-          <nav aria-label="Huvudnavigation" className="flex items-center gap-3 sm:gap-6">
+          <nav aria-label="Huvudnavigation" className="flex items-center gap-2 sm:gap-6">
             <a
               className="hidden text-sm font-medium text-[#596059] transition-colors hover:text-[#1d252d] sm:block"
               href="#upplevelsen"
@@ -119,11 +125,19 @@ export default function LandingPage() {
               Så fungerar det
             </a>
             <Link
-              className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#c9c7c0] bg-white/60 px-5 text-sm font-semibold text-[#1d252d] transition hover:border-[#9fa49d] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663]"
+              className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#c9c7c0] bg-white/60 px-4 text-sm font-semibold text-[#1d252d] transition hover:border-[#9fa49d] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663] sm:px-5"
               href="/app"
             >
               Logga in
             </Link>
+            {registrationAvailable ? (
+              <Link
+                className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#1d252d] px-4 text-sm font-semibold text-white transition hover:bg-[#2a343d] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663] sm:px-5"
+                href="/sign-up"
+              >
+                Skapa konto
+              </Link>
+            ) : null}
           </nav>
         </div>
       </header>
@@ -146,16 +160,25 @@ export default function LandingPage() {
           <div className="marketing-reveal marketing-delay-3 mt-9 flex flex-col items-stretch justify-center gap-3 sm:mt-11 sm:flex-row sm:items-center">
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#1d252d] px-8 text-[15px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2a343d] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663]"
-              href="/app"
+              href={registrationAvailable ? "/sign-up" : "/app"}
             >
-              Logga in
+              {registrationAvailable ? "Kom igång gratis" : "Logga in"}
             </Link>
-            <a
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#c7c5bd] bg-white/70 px-8 text-[15px] font-semibold text-[#1d252d] transition hover:-translate-y-0.5 hover:border-[#9ea39b] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663]"
-              href={pilotHref}
-            >
-              Ansök om pilotplats
-            </a>
+            {registrationAvailable ? (
+              <Link
+                className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#c7c5bd] bg-white/70 px-8 text-[15px] font-semibold text-[#1d252d] transition hover:-translate-y-0.5 hover:border-[#9ea39b] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663]"
+                href="/app"
+              >
+                Logga in
+              </Link>
+            ) : (
+              <a
+                className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#c7c5bd] bg-white/70 px-8 text-[15px] font-semibold text-[#1d252d] transition hover:-translate-y-0.5 hover:border-[#9ea39b] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#657663]"
+                href={pilotHref}
+              >
+                Ansök om pilotplats
+              </a>
+            )}
           </div>
         </div>
 
@@ -401,12 +424,21 @@ export default function LandingPage() {
             förstå — och leva med.
           </p>
           <div className="mt-10 flex flex-col items-stretch justify-center gap-3 sm:mt-12 sm:flex-row sm:items-center">
-            <a
-              className="marketing-pilot-button inline-flex min-h-12 items-center justify-center rounded-full px-8 text-[15px] font-semibold transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
-              href={pilotHref}
-            >
-              Ansök om pilotplats
-            </a>
+            {registrationAvailable ? (
+              <Link
+                className="marketing-pilot-button inline-flex min-h-12 items-center justify-center rounded-full px-8 text-[15px] font-semibold transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+                href="/sign-up"
+              >
+                Skapa konto
+              </Link>
+            ) : (
+              <a
+                className="marketing-pilot-button inline-flex min-h-12 items-center justify-center rounded-full px-8 text-[15px] font-semibold transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+                href={pilotHref}
+              >
+                Ansök om pilotplats
+              </a>
+            )}
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 px-8 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:border-white/60 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
               href="/app"

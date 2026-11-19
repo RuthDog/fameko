@@ -21,6 +21,7 @@ import {
 } from "../legal/legal-versions.ts";
 
 const middlewareUrl = new URL("../../middleware.ts", import.meta.url);
+const landingPageUrl = new URL("../../app/page.tsx", import.meta.url);
 const callbackUrl = new URL("../../app/auth/callback/route.ts", import.meta.url);
 const signUpUrl = new URL("../../app/sign-up/route.ts", import.meta.url);
 const startSignUpUrl = new URL("../../app/auth/start-sign-up/route.ts", import.meta.url);
@@ -118,6 +119,20 @@ test("registration document preserves Origin without leaking URL details", async
       }
     }
   }
+});
+
+test("landing registration calls to action follow the fail-closed server gate", async () => {
+  const source = await readFile(landingPageUrl, "utf8");
+
+  assert.match(source, /export const dynamic = "force-dynamic"/);
+  assert.match(
+    source,
+    /publicWorkosRegistrationGate\(process\.env\)\.ok/,
+  );
+  assert.match(source, /href=\{registrationAvailable \? "\/sign-up" : "\/app"\}/);
+  assert.match(source, /registrationAvailable \? "Kom igång gratis" : "Logga in"/);
+  assert.match(source, /href="\/sign-up"[\s\S]*Skapa konto/);
+  assert.match(source, /href=\{pilotHref\}[\s\S]*Ansök om pilotplats/);
 });
 
 test("registration rejects an opaque null Origin and accepts only the trusted Origin", async () => {
