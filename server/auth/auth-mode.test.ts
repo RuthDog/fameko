@@ -219,9 +219,10 @@ test("WorkOS mode requires complete secrets and a safe callback URL", () => {
   );
 });
 
-test("WorkOS staging allowlist accepts exactly two or three unique normalized addresses", () => {
+test("WorkOS staging allowlist accepts two to four unique normalized addresses", () => {
   const twoAllowedEmails = "allowed-a@example.test, Allowed-B@Example.Test ";
   const threeAllowedEmails = `${twoAllowedEmails},allowed-c@example.test`;
+  const fourAllowedEmails = `${threeAllowedEmails}, Allowed-D@Example.Test `;
 
   assert.doesNotThrow(() =>
     validateWorkosConfiguration({
@@ -236,8 +237,14 @@ test("WorkOS staging allowlist accepts exactly two or three unique normalized ad
     }),
   );
   assert.doesNotThrow(() =>
-    assertWorkosStagingEmailAllowed(" ALLOWED-C@EXAMPLE.TEST ", {
-      WORKOS_STAGING_ALLOWED_EMAILS: threeAllowedEmails,
+    validateWorkosConfiguration({
+      ...workosEnvironment,
+      WORKOS_STAGING_ALLOWED_EMAILS: fourAllowedEmails,
+    }),
+  );
+  assert.doesNotThrow(() =>
+    assertWorkosStagingEmailAllowed(" ALLOWED-D@EXAMPLE.TEST ", {
+      WORKOS_STAGING_ALLOWED_EMAILS: fourAllowedEmails,
     }),
   );
 });
@@ -248,7 +255,7 @@ test("WorkOS staging allowlist fails closed for invalid, duplicate or oversized 
     "allowed-a@example.test",
     "not-an-email,allowed-b@example.test",
     "allowed-a@example.test,Allowed-A@Example.Test",
-    "allowed-a@example.test,allowed-b@example.test,allowed-c@example.test,allowed-d@example.test",
+    "allowed-a@example.test,allowed-b@example.test,allowed-c@example.test,allowed-d@example.test,allowed-e@example.test",
   ]) {
     assert.throws(
       () =>

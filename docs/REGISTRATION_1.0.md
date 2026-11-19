@@ -68,7 +68,7 @@ Den isolerade stagingdefinitionen använder:
 - domän `auth-staging.fameko.se`;
 - D1 `fameko-auth-staging-eu`;
 - `FAMEKO_AUTH_MODE=workos_staging`;
-- separat sessionscookie och en allowlist med två eller tre testadresser.
+- separat sessionscookie och en allowlist med två till fyra testadresser.
 
 `migrations/0003_account_link_grants.sql` finns i aktuell kod och passerar lokal
 schema- och integrationstestning. Enligt tidigare extern inventering saknas den i
