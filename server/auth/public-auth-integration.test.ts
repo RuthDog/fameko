@@ -4,7 +4,12 @@ import test from "node:test";
 import { redirect } from "next/navigation.js";
 
 import { GET as getSignUpDocument } from "../../app/sign-up/route.ts";
-import { workosStagingAuthMode } from "./auth-mode.ts";
+import {
+  workosProductionAuthMode,
+  workosProductionAuthkitOrigin,
+  workosStagingAuthMode,
+  workosStagingAuthkitOrigin,
+} from "./auth-mode.ts";
 import {
   registrationAttestationCookieName,
   verifyRegistrationCallbackAttestation,
@@ -49,6 +54,16 @@ const environment = {
   WORKOS_ISSUER: "https://api.workos.com/",
   WORKOS_STAGING_ALLOWED_EMAILS:
     "allowed-a@example.test,allowed-b@example.test",
+};
+
+const productionEnvironment = {
+  FAMEKO_AUTH_MODE: workosProductionAuthMode,
+  FAMEKO_PUBLIC_REGISTRATION: "enabled",
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: "https://fameko.se/auth/callback",
+  WORKOS_API_KEY: "production-test-api-key",
+  WORKOS_CLIENT_ID: "client_prod_test",
+  WORKOS_COOKIE_PASSWORD: "p".repeat(32),
+  WORKOS_ISSUER: "https://api.workos.com/user_management/client_prod_test",
 };
 
 function acceptedRegistrationBody(intent: "create" | "recover") {
@@ -99,7 +114,11 @@ test("registration document preserves Origin without leaking URL details", async
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(
       response.headers.get("content-security-policy"),
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com https://spontaneous-theme-13-staging.authkit.app; base-uri 'none'; frame-ancestors 'none'",
+      `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com ${workosStagingAuthkitOrigin}; base-uri 'none'; frame-ancestors 'none'`,
+    );
+    assert.doesNotMatch(
+      response.headers.get("content-security-policy") ?? "",
+      new RegExp(workosProductionAuthkitOrigin.replaceAll(".", "\\.")),
     );
     const document = await response.text();
     assert.match(document, /<form action="\/sign-up" method="post">/);
@@ -116,6 +135,99 @@ test("registration document preserves Origin without leaking URL details", async
         delete process.env[name];
       } else {
         process.env[name] = value;
+      }
+    }
+  }
+});
+
+test("registration CSP and WorkOS start stay isolated between staging and production", async () => {
+  const cases = [
+    {
+      authkitOrigin: workosStagingAuthkitOrigin,
+      environment,
+      forbiddenOrigin: workosProductionAuthkitOrigin,
+      label: "staging",
+      publicOrigin: "https://auth-staging.example.test",
+    },
+    {
+      authkitOrigin: workosProductionAuthkitOrigin,
+      environment: productionEnvironment,
+      forbiddenOrigin: workosStagingAuthkitOrigin,
+      label: "production",
+      publicOrigin: "https://fameko.se",
+    },
+  ] as const;
+
+  for (const registrationCase of cases) {
+    const previousEnvironment = new Map<string, string | undefined>();
+    for (const [name, value] of Object.entries(registrationCase.environment)) {
+      previousEnvironment.set(name, process.env[name]);
+      process.env[name] = value;
+    }
+
+    try {
+      const documentResponse = getSignUpDocument(
+        new Request(`${registrationCase.publicOrigin}/sign-up`),
+      );
+      assert.equal(documentResponse.status, 200);
+      const policy = documentResponse.headers.get("content-security-policy") ?? "";
+      assert.match(policy, /form-action 'self' https:\/\/api\.workos\.com/);
+      assert.ok(policy.includes(registrationCase.authkitOrigin));
+      assert.ok(!policy.includes(registrationCase.forbiddenOrigin));
+
+      const accepted = await acceptWorkosSignUp(
+        new Request(`${registrationCase.publicOrigin}/sign-up`, {
+          body: acceptedRegistrationBody("create"),
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Origin: registrationCase.publicOrigin,
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+          },
+          method: "POST",
+        }),
+        registrationCase.environment,
+      );
+      assert.equal(accepted.status, 303);
+      assert.equal(
+        accepted.headers.get("location"),
+        `${registrationCase.publicOrigin}/auth/start-sign-up`,
+      );
+
+      const attestation = cookieValue(
+        accepted.headers.get("set-cookie"),
+        registrationAttestationCookieName,
+      );
+      assert.ok(attestation);
+      const started = await continueWorkosSignUp(
+        new Request(`${registrationCase.publicOrigin}/auth/start-sign-up`, {
+          headers: {
+            Accept: "text/html",
+            Cookie: `${registrationAttestationCookieName}=${attestation}`,
+          },
+        }),
+        registrationCase.environment,
+        {
+          createSignInUrl: async () => {
+            throw new Error("Recovery URL must not be selected for create intent.");
+          },
+          createSignUpUrl: async () =>
+            `https://api.workos.com/user_management/authorize?environment=${registrationCase.label}`,
+        },
+      );
+      assert.equal(started.status, 303);
+      assert.equal(
+        started.headers.get("location"),
+        `https://api.workos.com/user_management/authorize?environment=${registrationCase.label}`,
+      );
+    } finally {
+      for (const [name, value] of previousEnvironment) {
+        if (value === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = value;
+        }
       }
     }
   }
@@ -232,8 +344,9 @@ test("new account writes exist only in the verified callback path", async () => 
   assert.match(signUp, /acceptWorkosSignUp/);
   assert.match(
     signUp,
-    /form-action 'self' https:\/\/api\.workos\.com https:\/\/spontaneous-theme-13-staging\.authkit\.app;/,
+    /form-action 'self' https:\/\/api\.workos\.com \$\{authkitOrigin\};/,
   );
+  assert.match(signUp, /getWorkosAuthkitOrigin\(process\.env\)/);
   assert.doesNotMatch(signUp, /form-action[^\n]*\*/);
   assert.match(startSignUp, /getSignUpUrl/);
   assert.match(startSignUp, /getSignInUrl/);

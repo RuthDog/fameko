@@ -1,3 +1,4 @@
+import { getWorkosAuthkitOrigin } from "../../server/auth/auth-mode.ts";
 import {
   publicAuthUnavailableResponse,
   publicWorkosRegistrationGate,
@@ -8,7 +9,7 @@ import {
   currentTermsDocumentVersion,
 } from "../../server/legal/legal-versions.ts";
 
-function registrationPage(request: Request): Response {
+function registrationPage(request: Request, authkitOrigin: string): Response {
   const showAdultError = new URL(request.url).searchParams.get("error") === "adult-required";
   const error = showAdultError
     ? '<p id="form-error" role="alert">Du måste bekräfta att du är minst 18 år.</p>'
@@ -73,7 +74,7 @@ function registrationPage(request: Request): Response {
   return new Response(body, {
     headers: {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com https://spontaneous-theme-13-staging.authkit.app; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://api.workos.com ${authkitOrigin}; base-uri 'none'; frame-ancestors 'none'`,
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "strict-origin",
       "X-Content-Type-Options": "nosniff",
@@ -86,7 +87,7 @@ export function GET(request: Request) {
   if (!gate.ok) {
     return publicAuthUnavailableResponse(gate.status);
   }
-  return registrationPage(request);
+  return registrationPage(request, getWorkosAuthkitOrigin(process.env));
 }
 
 export async function POST(request: Request) {

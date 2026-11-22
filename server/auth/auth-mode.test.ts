@@ -8,12 +8,15 @@ import {
   assertWorkosStagingEmailAllowed,
   cloudflareAccessAuthMode,
   getAuthMode,
+  getWorkosAuthkitOrigin,
   isAccountLinkEnabled,
   isLegacyAccountLinkEnabled,
   validateWorkosConfiguration,
   workosProductionAuthMode,
+  workosProductionAuthkitOrigin,
   workosProductionTransitionAuthMode,
   workosStagingAuthMode,
+  workosStagingAuthkitOrigin,
 } from "./auth-mode.ts";
 import {
   isSameOriginFormRequest,
@@ -53,6 +56,28 @@ test("auth mode is explicit and unknown or missing values fail closed", () => {
   assert.equal(getAuthMode(productionEnvironment), workosProductionAuthMode);
   assert.throws(() => getAuthMode({}), AuthConfigurationError);
   assert.throws(() => getAuthMode({ FAMEKO_AUTH_MODE: "workos" }), AuthConfigurationError);
+});
+
+test("AuthKit origin is exact and environment-specific", () => {
+  assert.equal(
+    getWorkosAuthkitOrigin(workosEnvironment),
+    workosStagingAuthkitOrigin,
+  );
+  assert.equal(
+    getWorkosAuthkitOrigin(productionEnvironment),
+    workosProductionAuthkitOrigin,
+  );
+  assert.equal(
+    getWorkosAuthkitOrigin({
+      ...productionEnvironment,
+      FAMEKO_AUTH_MODE: workosProductionTransitionAuthMode,
+    }),
+    workosProductionAuthkitOrigin,
+  );
+  assert.throws(
+    () => getWorkosAuthkitOrigin({ FAMEKO_AUTH_MODE: cloudflareAccessAuthMode }),
+    AuthConfigurationError,
+  );
 });
 
 test("production WorkOS requires an exact configured client issuer without staging allowlist", () => {

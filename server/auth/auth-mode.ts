@@ -3,6 +3,10 @@ export const workosStagingAuthMode = "workos_staging";
 export const workosProductionTransitionAuthMode = "workos_production_transition";
 export const workosProductionAuthMode = "workos_production";
 export const legacyAccountLinkEnabledValue = "enabled";
+export const workosStagingAuthkitOrigin =
+  "https://spontaneous-theme-13-staging.authkit.app";
+export const workosProductionAuthkitOrigin =
+  "https://proactive-myth-55.authkit.app";
 
 export type AuthMode =
   | typeof cloudflareAccessAuthMode
@@ -84,6 +88,22 @@ export function isWorkosAuthMode(mode: AuthMode): boolean {
   return mode === workosStagingAuthMode
     || mode === workosProductionTransitionAuthMode
     || mode === workosProductionAuthMode;
+}
+
+export function getWorkosAuthkitOrigin(
+  environment: AuthEnvironment,
+): string {
+  const mode = getAuthMode(environment);
+  if (mode === workosStagingAuthMode) {
+    return workosStagingAuthkitOrigin;
+  }
+  if (
+    mode === workosProductionTransitionAuthMode
+    || mode === workosProductionAuthMode
+  ) {
+    return workosProductionAuthkitOrigin;
+  }
+  throw new AuthConfigurationError();
 }
 
 export function isPublicRegistrationEnabled(environment: AuthEnvironment): boolean {
